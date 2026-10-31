@@ -1,5 +1,11 @@
 # WiFi PM Helper (CGK Terminal 3)
 
+## 📲 Download APK Langsung
+- **Lewat Folder Repo**: Klik file 👉 [**`release/WiFi-PM-Helper-v1.0.apk`**](release/WiFi-PM-Helper-v1.0.apk) lalu tekan tombol **Download raw file** (ikon unduh di kanan atas).
+- **Lewat Menu Releases**: Klik bagian **Releases (`v1.0.0`)** di sebelah kanan halaman GitHub, lalu unduh **`WiFi-PM-Helper-v1.0.apk`**.
+
+---
+
 Aplikasi Android asisten teknisi **Preventive Maintenance (PM) & Corrective Maintenance (CM) WiFi Publik** untuk mempercepat pembuatan laporan harian dan dokumentasi foto.
 
 ## Fitur Utama
@@ -21,11 +27,3 @@ Aplikasi Android asisten teknisi **Preventive Maintenance (PM) & Corrective Main
 4. **Asisten AI Teknisi & Studio Gambar AI**
    - **Chatbot Teknisi Multi-Model**: Mendukung `gemini-3.8-flash`, `gemini-4-argon`, dan `gemini-3.1-flash-lite`.
    - **Studio Buat & Edit Gambar (`gemini-nano-banana-2.1`)**: Membuat atau memperjelas foto dokumentasi dengan instruksi teks.
-
-## Cara Build APK Secara Lokal
-
-```bash
-./gradlew assembleDebug
-```
-
-File APK akan tersedia di `app/build/outputs/apk/debug/app-debug.apk`.
