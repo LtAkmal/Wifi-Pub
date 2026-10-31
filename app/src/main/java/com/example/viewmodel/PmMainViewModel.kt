@@ -1,0 +1,676 @@
+package com.example.viewmodel
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
+import android.util.Log
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.data.CorrectiveMaintenanceEntity
+import com.example.data.PmReportEntity
+import com.example.data.PmRepository
+import com.example.data.TodayReportConfig
+import com.example.util.CollageGenerator
+import com.example.util.CollageResult
+import com.example.util.ReportFormatter
+import com.google.firebase.Firebase
+import com.google.firebase.ai.ai
+import com.google.firebase.ai.type.ImagePart
+import com.google.firebase.ai.type.ResponseModality
+import com.google.firebase.ai.type.Schema
+import com.google.firebase.ai.type.content
+import com.google.firebase.ai.type.generationConfig
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import org.json.JSONObject
+
+private const val TAG = "PmMainViewModel"
+
+sealed interface SpeedtestScanState {
+    data object Idle : SpeedtestScanState
+    data object Scanning : SpeedtestScanState
+    data class Success(val downloadMbps: String, val uploadMbps: String) : SpeedtestScanState
+    data class Error(val message: String) : SpeedtestScanState
+}
+
+sealed interface CollageUiState {
+    data object Idle : CollageUiState
+    data object Generating : CollageUiState
+    data class Ready(val result: CollageResult) : CollageUiState
+    data class Error(val message: String) : CollageUiState
+}
+
+sealed interface AiImageUiState {
+    data object Idle : AiImageUiState
+    data object Loading : AiImageUiState
+    data class Success(val bitmap: Bitmap) : AiImageUiState
+    data class Error(val message: String) : AiImageUiState
+}
+
+enum class ChatModelOption(val modelId: String, val label: String, val description: String) {
+    FLASH("gemini-3.8-flash", "Gemini 3.8 Flash", "Standar & seimbang untuk tugas harian"),
+    ARGON("gemini-4-argon", "Gemini 4 Argon", "Penalaran kompleks & analisis mendalam"),
+    FLASH_LITE("gemini-3.1-flash-lite", "Gemini 3.1 Flash-Lite", "Ultra cepat untuk respon kilat")
+}
+
+data class ChatMessageUi(
+    val id: Long = System.currentTimeMillis(),
+    val isUser: Boolean,
+    val text: String,
+    val modelUsed: String = "",
+    val isStreaming: Boolean = false
+)
+
+class PmMainViewModel(
+    private val repository: PmRepository
+) : ViewModel() {
+
+    // Selected date key (YYYY-MM-DD), defaults to today
+    private val _selectedDateKey = MutableStateFlow(ReportFormatter.todayDateKey())
+    val selectedDateKey: StateFlow<String> = _selectedDateKey.asStateFlow()
+
+    // Current Daily PM Form State
+    private val _locationInput = MutableStateFlow(PmRepository.DEFAULT_LOCATIONS.first())
+    val locationInput: StateFlow<String> = _locationInput.asStateFlow()
+
+    private val _equipmentNameInput = MutableStateFlow("Access Point Wifi Publik")
+    val equipmentNameInput: StateFlow<String> = _equipmentNameInput.asStateFlow()
+
+    private val _uploadMbpsInput = MutableStateFlow("44.6")
+    val uploadMbpsInput: StateFlow<String> = _uploadMbpsInput.asStateFlow()
+
+    private val _downloadMbpsInput = MutableStateFlow("66.7")
+    val downloadMbpsInput: StateFlow<String> = _downloadMbpsInput.asStateFlow()
+
+    private val _displayDateEnInput = MutableStateFlow(
+        ReportFormatter.formatDisplayDateEn(ReportFormatter.todayDateKey())
+    )
+    val displayDateEnInput: StateFlow<String> = _displayDateEnInput.asStateFlow()
+
+    private val _statusNetwork = MutableStateFlow(true)
+    val statusNetwork: StateFlow<Boolean> = _statusNetwork.asStateFlow()
+
+    private val _statusDevice = MutableStateFlow(true)
+    val statusDevice: StateFlow<Boolean> = _statusDevice.asStateFlow()
+
+    private val _statusSpeed = MutableStateFlow(true)
+    val statusSpeed: StateFlow<Boolean> = _statusSpeed.asStateFlow()
+
+    // Speedtest Screenshot & Scan State
+    private val _speedtestBitmap = MutableStateFlow<Bitmap?>(null)
+    val speedtestBitmap: StateFlow<Bitmap?> = _speedtestBitmap.asStateFlow()
+
+    private val _scanState = MutableStateFlow<SpeedtestScanState>(SpeedtestScanState.Idle)
+    val scanState: StateFlow<SpeedtestScanState> = _scanState.asStateFlow()
+
+    // 4-Photo Collage State
+    private val _collageBitmaps = MutableStateFlow<List<Bitmap>>(emptyList())
+    val collageBitmaps: StateFlow<List<Bitmap>> = _collageBitmaps.asStateFlow()
+
+    private val _includeCollageHeader = MutableStateFlow(true)
+    val includeCollageHeader: StateFlow<Boolean> = _includeCollageHeader.asStateFlow()
+
+    private val _collageState = MutableStateFlow<CollageUiState>(CollageUiState.Idle)
+    val collageState: StateFlow<CollageUiState> = _collageState.asStateFlow()
+
+    // Saved Locations & Report Config from DataStore
+    val savedLocations: StateFlow<List<String>> = repository.savedLocationsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PmRepository.DEFAULT_LOCATIONS)
+
+    val reportConfig: StateFlow<TodayReportConfig> = repository.reportConfigFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TodayReportConfig())
+
+    // Reactive PM & CM lists for the selected date
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val pmReportsForSelectedDate: StateFlow<List<PmReportEntity>> = _selectedDateKey
+        .flatMapLatest { dateKey -> repository.getPmReportsForDate(dateKey) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val cmReportsForSelectedDate: StateFlow<List<CorrectiveMaintenanceEntity>> = _selectedDateKey
+        .flatMapLatest { dateKey -> repository.getCmForDate(dateKey) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // AI Image Studio State (gemini-nano-banana-2.1)
+    private val _aiImageInputBitmap = MutableStateFlow<Bitmap?>(null)
+    val aiImageInputBitmap: StateFlow<Bitmap?> = _aiImageInputBitmap.asStateFlow()
+
+    private val _aiImageState = MutableStateFlow<AiImageUiState>(AiImageUiState.Idle)
+    val aiImageState: StateFlow<AiImageUiState> = _aiImageState.asStateFlow()
+
+    // Multi-turn Chatbot State
+    private val _selectedChatModel = MutableStateFlow(ChatModelOption.FLASH)
+    val selectedChatModel: StateFlow<ChatModelOption> = _selectedChatModel.asStateFlow()
+
+    private val _chatMessages = MutableStateFlow<List<ChatMessageUi>>(
+        listOf(
+            ChatMessageUi(
+                isUser = false,
+                text = "Halo! Saya Asisten AI ICT Operation & PM WiFi Publik. Anda bisa bertanya soal troubleshooting Access Point, merapikan catatan Corrective Maintenance, atau menganalisis hasil Speedtest.",
+                modelUsed = ChatModelOption.FLASH.label
+            )
+        )
+    )
+    val chatMessages: StateFlow<List<ChatMessageUi>> = _chatMessages.asStateFlow()
+
+    private val _isChatLoading = MutableStateFlow(false)
+    val isChatLoading: StateFlow<Boolean> = _isChatLoading.asStateFlow()
+
+    private val _chatError = MutableStateFlow<String?>(null)
+    val chatError: StateFlow<String?> = _chatError.asStateFlow()
+
+    // 1. Speedtest Structured Output Model (gemini-3.8-flash)
+    private val speedtestSchema = Schema.obj(
+        properties = mapOf(
+            "downloadMbps" to Schema.string(
+                description = "Numeric value of Download speed in Mbps extracted from the speedtest image (e.g. '66.7'). Only numbers and decimal point."
+            ),
+            "uploadMbps" to Schema.string(
+                description = "Numeric value of Upload speed in Mbps extracted from the speedtest image (e.g. '44.6'). Only numbers and decimal point."
+            )
+        )
+    )
+
+    private val speedtestExtractorModel by lazy {
+        Firebase.ai.generativeModel(
+            modelName = "gemini-3.8-flash",
+            generationConfig = generationConfig {
+                responseMimeType = "application/json"
+                responseSchema = speedtestSchema
+            }
+        )
+    }
+
+    // 2. Image Generation & Editing Model (gemini-nano-banana-2.1)
+    private val nanoBananaImageModel by lazy {
+        Firebase.ai.generativeModel(
+            modelName = "gemini-nano-banana-2.1",
+            generationConfig = generationConfig {
+                responseModalities = listOf(ResponseModality.IMAGE)
+            }
+        )
+    }
+
+    // 3. Chatbot Models with System Instruction
+    private val chatSystemInstruction = content {
+        text(
+            "Anda adalah Asisten Teknis Senior ICT Operation & Preventive Maintenance (PM) WiFi Publik Bandara (CGK Terminal 3). " +
+                "Bantu teknisi dalam menganalisis kualitas bandwidth/speedtest WiFi, menyusun laporan Corrective Maintenance (CM) dan Preventive Maintenance (PM), " +
+                "serta memberikan solusi cepat kendala perangkat Access Point dengan bahasa Indonesia yang ringkas, jelas, dan profesional."
+        )
+    }
+
+    private val flashChatModel by lazy {
+        Firebase.ai.generativeModel(
+            modelName = "gemini-3.8-flash",
+            systemInstruction = chatSystemInstruction
+        )
+    }
+
+    private val argonChatModel by lazy {
+        Firebase.ai.generativeModel(
+            modelName = "gemini-4-argon",
+            systemInstruction = chatSystemInstruction
+        )
+    }
+
+    private val flashLiteChatModel by lazy {
+        Firebase.ai.generativeModel(
+            modelName = "gemini-3.1-flash-lite",
+            systemInstruction = chatSystemInstruction
+        )
+    }
+
+    // --- Form Setters ---
+    fun updateLocation(value: String) {
+        _locationInput.value = value
+    }
+
+    fun updateEquipmentName(value: String) {
+        _equipmentNameInput.value = value
+    }
+
+    fun updateUploadMbps(value: String) {
+        _uploadMbpsInput.value = value
+    }
+
+    fun updateDownloadMbps(value: String) {
+        _downloadMbpsInput.value = value
+    }
+
+    fun updateDisplayDateEn(value: String) {
+        _displayDateEnInput.value = value
+    }
+
+    fun toggleStatusNetwork(value: Boolean) {
+        _statusNetwork.value = value
+    }
+
+    fun toggleStatusDevice(value: Boolean) {
+        _statusDevice.value = value
+    }
+
+    fun toggleStatusSpeed(value: Boolean) {
+        _statusSpeed.value = value
+    }
+
+    fun setSelectedDateKey(dateKey: String) {
+        _selectedDateKey.value = dateKey
+        _displayDateEnInput.value = ReportFormatter.formatDisplayDateEn(dateKey)
+    }
+
+    fun saveCustomLocation(location: String) {
+        viewModelScope.launch {
+            repository.addCustomLocation(location)
+        }
+    }
+
+    fun updateReportConfig(config: TodayReportConfig) {
+        viewModelScope.launch {
+            repository.saveReportConfig(config)
+        }
+    }
+
+    // --- Speedtest Multimodal Extraction ---
+    fun onSpeedtestImageSelected(context: Context, uri: Uri, autoScan: Boolean = true) {
+        viewModelScope.launch {
+            val bitmap = CollageGenerator.loadBitmapFromUri(context, uri, maxDimension = 1280)
+            if (bitmap != null) {
+                _speedtestBitmap.value = bitmap
+                if (autoScan) {
+                    scanSpeedtestBitmap(bitmap)
+                }
+            } else {
+                _scanState.value = SpeedtestScanState.Error("Gagal membaca gambar dari perangkat.")
+            }
+        }
+    }
+
+    fun scanSpeedtestBitmap(bitmap: Bitmap? = _speedtestBitmap.value) {
+        if (bitmap == null) {
+            _scanState.value = SpeedtestScanState.Error("Pilih screenshot Speedtest terlebih dahulu.")
+            return
+        }
+        viewModelScope.launch {
+            _scanState.value = SpeedtestScanState.Scanning
+            try {
+                val response = withTimeout(60_000L) {
+                    speedtestExtractorModel.generateContent(
+                        content {
+                            image(bitmap)
+                            text(
+                                "Read this speedtest screenshot and extract ONLY the numeric Download speed (in Mbps) and Upload speed (in Mbps). " +
+                                    "Normalize commas to dots (e.g. 66,7 -> 66.7). Do not include 'Mbps' text."
+                            )
+                        }
+                    )
+                }
+                val jsonText = response.text
+                if (jsonText.isNullOrBlank()) {
+                    _scanState.value = SpeedtestScanState.Error("AI mengembalikan hasil kosong.")
+                    return@launch
+                }
+
+                val json = JSONObject(jsonText)
+                val downRaw = json.optString("downloadMbps", "").replace(",", ".").trim()
+                val upRaw = json.optString("uploadMbps", "").replace(",", ".").trim()
+
+                val downClean = ReportFormatter.cleanSpeedNumber(downRaw)
+                val upClean = ReportFormatter.cleanSpeedNumber(upRaw)
+
+                _downloadMbpsInput.value = downClean
+                _uploadMbpsInput.value = upClean
+                _scanState.value = SpeedtestScanState.Success(
+                    downloadMbps = downClean,
+                    uploadMbps = upClean
+                )
+            } catch (e: TimeoutCancellationException) {
+                Log.e(TAG, "Speedtest scan timed out", e)
+                _scanState.value = SpeedtestScanState.Error("Waktu deteksi habis (60 detik). Silakan coba lagi.")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Speedtest scan failed", e)
+                _scanState.value = SpeedtestScanState.Error(
+                    e.localizedMessage ?: "Gagal mendeteksi angka Speedtest."
+                )
+            }
+        }
+    }
+
+    // --- Save Daily PM Entry to Today Report ---
+    fun saveCurrentPmToTodayReport(onSaved: (Int) -> Unit = {}) {
+        viewModelScope.launch {
+            val currentCollage = (_collageState.value as? CollageUiState.Ready)?.result
+            val entity = PmReportEntity(
+                dateKey = _selectedDateKey.value,
+                displayDateEn = _displayDateEnInput.value,
+                location = _locationInput.value.trim(),
+                equipmentName = _equipmentNameInput.value.trim(),
+                uploadMbps = ReportFormatter.cleanSpeedNumber(_uploadMbpsInput.value),
+                downloadMbps = ReportFormatter.cleanSpeedNumber(_downloadMbpsInput.value),
+                statusNetwork = _statusNetwork.value,
+                statusDevice = _statusDevice.value,
+                statusSpeed = _statusSpeed.value,
+                onDutyText = reportConfig.value.onDutyDailyPm,
+                collageFilePath = currentCollage?.file?.absolutePath,
+                collageSizeBytes = currentCollage?.sizeBytes ?: 0L
+            )
+            repository.addCustomLocation(entity.location)
+            repository.insertPmReport(entity)
+            val nextIndex = pmReportsForSelectedDate.value.size + 1
+            // Automatically advance location suggestion to next unvisited default location if available
+            val usedLocations = (pmReportsForSelectedDate.value.map { it.location } + entity.location).toSet()
+            val nextSuggested = savedLocations.value.firstOrNull { it !in usedLocations }
+            if (nextSuggested != null) {
+                _locationInput.value = nextSuggested
+            }
+            onSaved(nextIndex)
+        }
+    }
+
+    fun deletePmReport(id: Int) {
+        viewModelScope.launch {
+            repository.deletePmReport(id)
+        }
+    }
+
+    // --- Corrective Maintenance CRUD ---
+    fun addCorrectiveMaintenance(
+        activityTitle: String,
+        location: String,
+        equipmentName: String,
+        kendala: String,
+        issue: String,
+        actionLines: String,
+        statusLines: String
+    ) {
+        viewModelScope.launch {
+            repository.insertCm(
+                CorrectiveMaintenanceEntity(
+                    dateKey = _selectedDateKey.value,
+                    activityTitle = activityTitle,
+                    location = location,
+                    equipmentName = equipmentName,
+                    kendala = kendala,
+                    issue = issue,
+                    actionLines = actionLines,
+                    statusLines = statusLines
+                )
+            )
+        }
+    }
+
+    fun deleteCorrectiveMaintenance(id: Int) {
+        viewModelScope.launch {
+            repository.deleteCm(id)
+        }
+    }
+
+    // --- 4-Photo Collage (< 1 MB) Operations ---
+    fun onCollagePhotosSelected(context: Context, uris: List<Uri>) {
+        viewModelScope.launch {
+            val loaded = uris.take(4).mapNotNull { uri ->
+                CollageGenerator.loadBitmapFromUri(context, uri, maxDimension = 1080)
+            }
+            if (loaded.isNotEmpty()) {
+                val combined = (_collageBitmaps.value + loaded).take(4)
+                _collageBitmaps.value = combined
+                generateCollage(context)
+            }
+        }
+    }
+
+    fun replaceCollagePhotoAt(context: Context, index: Int, uri: Uri) {
+        viewModelScope.launch {
+            val bmp = CollageGenerator.loadBitmapFromUri(context, uri, maxDimension = 1080) ?: return@launch
+            val current = _collageBitmaps.value.toMutableList()
+            if (index in current.indices) {
+                current[index] = bmp
+            } else {
+                current.add(bmp)
+            }
+            _collageBitmaps.value = current.take(4)
+            generateCollage(context)
+        }
+    }
+
+    fun removeCollagePhotoAt(context: Context, index: Int) {
+        val current = _collageBitmaps.value.toMutableList()
+        if (index in current.indices) {
+            current.removeAt(index)
+            _collageBitmaps.value = current
+            if (current.isEmpty()) {
+                _collageState.value = CollageUiState.Idle
+            } else {
+                generateCollage(context)
+            }
+        }
+    }
+
+    fun clearCollagePhotos() {
+        _collageBitmaps.value = emptyList()
+        _collageState.value = CollageUiState.Idle
+    }
+
+    fun setIncludeCollageHeader(context: Context, include: Boolean) {
+        _includeCollageHeader.value = include
+        if (_collageBitmaps.value.isNotEmpty()) {
+            generateCollage(context)
+        }
+    }
+
+    fun generateCollage(context: Context) {
+        val photos = _collageBitmaps.value
+        if (photos.isEmpty()) {
+            _collageState.value = CollageUiState.Error("Pilih minimal 1 hingga 4 foto terlebih dahulu.")
+            return
+        }
+        viewModelScope.launch {
+            _collageState.value = CollageUiState.Generating
+            try {
+                val up = ReportFormatter.cleanSpeedNumber(_uploadMbpsInput.value)
+                val down = ReportFormatter.cleanSpeedNumber(_downloadMbpsInput.value)
+                val speedText = "Up ${up}Mbps / Down ${down}Mbps"
+                val result = CollageGenerator.create2x2CollageUnder1Mb(
+                    context = context,
+                    photos = photos,
+                    locationTitle = _locationInput.value,
+                    dateLabel = _displayDateEnInput.value,
+                    speedSummary = speedText,
+                    includeHeaderWatermark = _includeCollageHeader.value
+                )
+                _collageState.value = CollageUiState.Ready(result)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to generate collage", e)
+                _collageState.value = CollageUiState.Error(
+                    e.localizedMessage ?: "Gagal membuat kolase foto."
+                )
+            }
+        }
+    }
+
+    // --- AI Image Creation & Editing (gemini-nano-banana-2.1) ---
+    fun setAiImageInputFromUri(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            val bmp = CollageGenerator.loadBitmapFromUri(context, uri, maxDimension = 1024)
+            _aiImageInputBitmap.value = bmp
+        }
+    }
+
+    fun clearAiImageInput() {
+        _aiImageInputBitmap.value = null
+    }
+
+    fun generateOrEditImageWithAi(prompt: String) {
+        if (prompt.isBlank()) {
+            _aiImageState.value = AiImageUiState.Error("Masukkan instruksi/prompt gambar terlebih dahulu.")
+            return
+        }
+        val sourceBitmap = _aiImageInputBitmap.value
+        viewModelScope.launch {
+            _aiImageState.value = AiImageUiState.Loading
+            try {
+                val outputBitmap = withTimeout(60_000L) {
+                    val response = if (sourceBitmap != null) {
+                        nanoBananaImageModel.generateContent(
+                            content {
+                                image(sourceBitmap)
+                                text(prompt.trim())
+                            }
+                        )
+                    } else {
+                        nanoBananaImageModel.generateContent(prompt.trim())
+                    }
+                    response.candidates.firstOrNull()
+                        ?.content?.parts?.filterIsInstance<ImagePart>()
+                        ?.firstOrNull()?.image
+                }
+
+                if (outputBitmap != null) {
+                    _aiImageState.value = AiImageUiState.Success(outputBitmap)
+                } else {
+                    _aiImageState.value = AiImageUiState.Error("Model tidak mengembalikan gambar.")
+                }
+            } catch (e: TimeoutCancellationException) {
+                Log.e(TAG, "AI image generation timed out", e)
+                _aiImageState.value = AiImageUiState.Error("Pembuatan gambar melebihi batas waktu 60 detik.")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "AI image generation failed", e)
+                _aiImageState.value = AiImageUiState.Error(
+                    e.localizedMessage ?: "Gagal membuat/mengedit gambar dengan AI."
+                )
+            }
+        }
+    }
+
+    fun addGeneratedAiImageToCollage(context: Context, bitmap: Bitmap) {
+        val updated = (_collageBitmaps.value + bitmap).takeLast(4)
+        _collageBitmaps.value = updated
+        generateCollage(context)
+    }
+
+    // --- Multi-Turn Gemini Chatbot ---
+    fun setChatModel(option: ChatModelOption) {
+        _selectedChatModel.value = option
+    }
+
+    fun sendChatMessage(userText: String) {
+        val trimmed = userText.trim()
+        if (trimmed.isEmpty() || _isChatLoading.value) return
+
+        val currentModelOption = _selectedChatModel.value
+        val userMsg = ChatMessageUi(
+            id = System.currentTimeMillis(),
+            isUser = true,
+            text = trimmed
+        )
+        val priorHistory = _chatMessages.value
+        _chatMessages.value = priorHistory + userMsg
+        _isChatLoading.value = true
+        _chatError.value = null
+
+        viewModelScope.launch {
+            val responseId = System.currentTimeMillis() + 1L
+            val accumulated = StringBuilder()
+            try {
+                val activeModel = when (currentModelOption) {
+                    ChatModelOption.FLASH -> flashChatModel
+                    ChatModelOption.ARGON -> argonChatModel
+                    ChatModelOption.FLASH_LITE -> flashLiteChatModel
+                }
+
+                // Convert existing messages into Firebase AI Content history
+                val sdkHistory = priorHistory.map { msg ->
+                    content(role = if (msg.isUser) "user" else "model") {
+                        text(msg.text)
+                    }
+                }
+                val chat = activeModel.startChat(history = sdkHistory)
+
+                // Add placeholder streaming message
+                _chatMessages.value = _chatMessages.value + ChatMessageUi(
+                    id = responseId,
+                    isUser = false,
+                    text = "...",
+                    modelUsed = currentModelOption.label,
+                    isStreaming = true
+                )
+
+                withTimeout(60_000L) {
+                    chat.sendMessageStream(trimmed).collect { chunk ->
+                        val partText = chunk.text.orEmpty()
+                        accumulated.append(partText)
+                        val currentText = accumulated.toString().ifEmpty { "..." }
+                        _chatMessages.value = _chatMessages.value.map { item ->
+                            if (item.id == responseId) {
+                                item.copy(text = currentText, isStreaming = true)
+                            } else {
+                                item
+                            }
+                        }
+                    }
+                }
+
+                val finalReply = accumulated.toString().trim()
+                if (finalReply.isNotEmpty()) {
+                    _chatMessages.value = _chatMessages.value.map { item ->
+                        if (item.id == responseId) {
+                            item.copy(text = finalReply, isStreaming = false)
+                        } else {
+                            item
+                        }
+                    }
+                } else {
+                    _chatMessages.value = _chatMessages.value.filterNot { it.id == responseId }
+                    _chatError.value = "Model mengembalikan pesan kosong."
+                }
+            } catch (e: TimeoutCancellationException) {
+                Log.e(TAG, "Chat timed out", e)
+                _chatMessages.value = _chatMessages.value.filterNot { it.id == responseId }
+                _chatError.value = "Waktu respon chat habis (60 detik). Silakan coba lagi."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Chat failed", e)
+                _chatMessages.value = _chatMessages.value.filterNot { it.id == responseId }
+                _chatError.value = e.localizedMessage ?: "Gagal mengirim pesan ke Gemini."
+            } finally {
+                _isChatLoading.value = false
+            }
+        }
+    }
+
+    fun clearChatHistory() {
+        _chatMessages.value = listOf(
+            ChatMessageUi(
+                isUser = false,
+                text = "Riwayat chat telah dibersihkan. Silakan ajukan pertanyaan terkait PM WiFi, Speedtest, atau laporan harian Anda.",
+                modelUsed = _selectedChatModel.value.label
+            )
+        )
+        _chatError.value = null
+    }
+
+    companion object {
+        fun provideFactory(repository: PmRepository): ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                PmMainViewModel(repository)
+            }
+        }
+    }
+}

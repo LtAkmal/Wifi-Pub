@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">WiFi PM Helper</string>
+    <string name="nav_pm_daily">PM Speedtest</string>
+    <string name="nav_photo_collage">Kolase 4 Foto</string>
+    <string name="nav_today_report">Today Report</string>
+    <string name="nav_ai_studio">Asisten AI</string>
+    <string name="scan_speedtest_ai">Scan Speedtest Otomatis (AI)</string>
+    <string name="copy_report_button">Salin Teks Laporan</string>
+    <string name="share_whatsapp_button">Kirim ke WhatsApp</string>
+    <string name="save_pm_button">Simpan ke Today Report</string>
+    <string name="generate_collage_button">Buat Kolase &lt; 1 MB</string>
+    <string name="save_collage_gallery">Simpan ke Galeri</string>
+    <string name="share_collage">Bagikan Foto Kolase</string>
+</resources>
