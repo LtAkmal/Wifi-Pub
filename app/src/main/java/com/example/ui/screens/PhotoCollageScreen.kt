@@ -32,15 +32,10 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -86,7 +81,6 @@ fun PhotoCollageScreen(
     val includeHeader by viewModel.includeCollageHeader.collectAsStateWithLifecycle()
     val collageState by viewModel.collageState.collectAsStateWithLifecycle()
     val location by viewModel.locationInput.collectAsStateWithLifecycle()
-    val displayDateEn by viewModel.displayDateEnInput.collectAsStateWithLifecycle()
 
     var replaceSlotIndex by remember { mutableIntStateOf(-1) }
 
@@ -110,262 +104,208 @@ fun PhotoCollageScreen(
         modifier = Modifier
             .fillMaxSize()
             .testTag("photo_collage_screen"),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // 1. Header Banner explaining the <1MB 4-Photo Collage tool
+        // 1. Clean 2x2 Photo Grid Card
         item {
-            Card(
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                ),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.GridView,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(34.dp)
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Kolase 4 Foto Jadi 1 (< 1 MB)",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Text(
-                            text = "Otomatis menyusun Grid 2x2 dengan label Lokasi & Tanggal serta kompresi pintar di bawah 1 MB untuk Form Perusahaan.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
-                        )
-                    }
-                }
-            }
-        }
-
-        // 2. Photo Picker Controls & 2x2 Slot Selector
-        item {
-            ElevatedCard(
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Pilih 4 Foto Dokumentasi (${collageBitmaps.size}/4)",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        if (collageBitmaps.isNotEmpty()) {
-                            IconButton(
-                                onClick = { viewModel.clearCollagePhotos() },
-                                modifier = Modifier.testTag("clear_collage_photos_button")
-                            ) {
-                                Icon(
-                                    Icons.Default.DeleteSweep,
-                                    contentDescription = "Hapus Semua Foto",
-                                    tint = MaterialTheme.colorScheme.error
-                                )
-                            }
+            CleanSectionCard(
+                stepNumber = "1",
+                title = "Susun 4 Foto Dokumentasi",
+                subtitle = "Ketuk kotak untuk ganti foto atau pilih 4 sekaligus",
+                trailingHeader = {
+                    if (collageBitmaps.isNotEmpty()) {
+                        IconButton(
+                            onClick = { viewModel.clearCollagePhotos() },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("clear_collage_photos_button")
+                        ) {
+                            Icon(
+                                Icons.Default.DeleteSweep,
+                                contentDescription = "Reset Foto",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
-
-                    Button(
-                        onClick = {
-                            pickMultiplePhotosLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("pick_4_photos_button")
-                    ) {
-                        Icon(Icons.Default.Collections, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            if (collageBitmaps.isEmpty()) "Pilih 4 Foto Sekaligus dari Galeri"
-                            else "Tambah / Ganti Foto dari Galeri"
+                }
+            ) {
+                Button(
+                    onClick = {
+                        pickMultiplePhotosLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
-                    }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("pick_4_photos_button")
+                ) {
+                    Icon(Icons.Default.Collections, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        if (collageBitmaps.isEmpty()) "Pilih 4 Foto Sekaligus"
+                        else "Tambah / Ganti Foto (${collageBitmaps.size}/4)"
+                    )
+                }
 
-                    // 2x2 Interactive Slot Grid
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        for (row in 0..1) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                for (col in 0..1) {
-                                    val slotIdx = row * 2 + col
-                                    val bmp = collageBitmaps.getOrNull(slotIdx)
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .aspectRatio(1.2f)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                                            .border(
-                                                width = 1.dp,
-                                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
-                                                shape = RoundedCornerShape(12.dp)
+                // Clean 2x2 Grid
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    for (row in 0..1) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            for (col in 0..1) {
+                                val slotIdx = row * 2 + col
+                                val bmp = collageBitmaps.getOrNull(slotIdx)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1.15f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .border(
+                                            width = 1.dp,
+                                            color = MaterialTheme.colorScheme.outline,
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .clickable {
+                                            replaceSlotIndex = slotIdx
+                                            pickSingleSlotLauncher.launch(
+                                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                             )
-                                            .clickable {
-                                                replaceSlotIndex = slotIdx
-                                                pickSingleSlotLauncher.launch(
-                                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                                )
-                                            }
-                                            .testTag("collage_slot_$slotIdx"),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (bmp != null) {
-                                            Image(
-                                                bitmap = bmp.asImageBitmap(),
-                                                contentDescription = "Foto ${slotIdx + 1}",
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = ContentScale.Crop
+                                        }
+                                        .testTag("collage_slot_$slotIdx"),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (bmp != null) {
+                                        Image(
+                                            bitmap = bmp.asImageBitmap(),
+                                            contentDescription = "Foto ${slotIdx + 1}",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomStart)
+                                                .padding(8.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color.Black.copy(alpha = 0.65f))
+                                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                        ) {
+                                            Text(
+                                                text = "FOTO ${slotIdx + 1}",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold
                                             )
-                                            Surface(
-                                                color = Color.Black.copy(alpha = 0.65f),
-                                                shape = RoundedCornerShape(bottomEnd = 10.dp),
-                                                modifier = Modifier.align(Alignment.TopStart)
-                                            ) {
-                                                Text(
-                                                    text = "Foto ${slotIdx + 1}",
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    color = Color.White,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                )
-                                            }
-                                            IconButton(
-                                                onClick = { viewModel.removeCollagePhotoAt(context, slotIdx) },
-                                                modifier = Modifier
-                                                    .align(Alignment.TopEnd)
-                                                    .padding(4.dp)
-                                                    .size(28.dp)
-                                                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.Close,
-                                                    contentDescription = "Hapus Foto ${slotIdx + 1}",
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
-                                        } else {
-                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                Icon(
-                                                    Icons.Default.AddPhotoAlternate,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                Text(
-                                                    text = "+ Foto ${slotIdx + 1}",
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
+                                        }
+                                        IconButton(
+                                            onClick = { viewModel.removeCollagePhotoAt(context, slotIdx) },
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(6.dp)
+                                                .size(26.dp)
+                                                .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Hapus",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    } else {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Icon(
+                                                Icons.Default.AddPhotoAlternate,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "Foto ${slotIdx + 1}",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
                                         }
                                     }
                                 }
                             }
                         }
                     }
+                }
 
-                    // Watermark Header Configuration
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Tampilkan Label Lokasi, Tanggal & Speedtest",
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                text = "Menambahkan header informasi PM di bagian atas kolase",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = includeHeader,
-                            onCheckedChange = { viewModel.setIncludeCollageHeader(context, it) },
-                            modifier = Modifier.testTag("toggle_collage_header_switch")
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+
+                // Compact Watermark Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Banner Lokasi & Tanggal di Kolase",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Menampilkan nama lokasi & hasil speedtest di atas foto",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Switch(
+                        checked = includeHeader,
+                        onCheckedChange = { viewModel.setIncludeCollageHeader(context, it) },
+                        modifier = Modifier.testTag("toggle_collage_header_switch")
+                    )
+                }
 
-                    if (includeHeader) {
-                        OutlinedTextField(
-                            value = location,
-                            onValueChange = {
-                                viewModel.updateLocation(it)
-                            },
-                            label = { Text("Label Lokasi pada Kolase") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = displayDateEn,
-                                onValueChange = { viewModel.updateDisplayDateEn(it) },
-                                label = { Text("Label Tanggal") },
-                                singleLine = true,
-                                modifier = Modifier.weight(1f)
-                            )
-                            FilledTonalButton(
-                                onClick = { viewModel.generateCollage(context) },
-                                enabled = collageBitmaps.isNotEmpty()
-                            ) {
-                                Icon(Icons.Default.Refresh, contentDescription = null)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Update")
+                if (includeHeader) {
+                    OutlinedTextField(
+                        value = location,
+                        onValueChange = {
+                            viewModel.updateLocation(it)
+                            if (collageBitmaps.isNotEmpty()) {
+                                viewModel.generateCollage(context)
                             }
-                        }
-                    }
+                        },
+                        label = { Text("Judul Lokasi pada Kolase") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
 
-        // 3. Generated Collage Result & Guaranteed <1MB Verification
+        // 2. Collage Preview & <1MB Verification Card
         item {
             when (val state = collageState) {
                 is CollageUiState.Generating -> {
-                    ElevatedCard(
+                    Surface(
                         shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        color = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(24.dp),
+                                .padding(28.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            CircularProgressIndicator()
+                            CircularProgressIndicator(modifier = Modifier.size(28.dp))
                             Text(
-                                text = "Menyusun kolase 2x2 & mengompresi di bawah 1 MB...",
+                                text = "Mengompresi kolase di bawah 1 MB...",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
@@ -375,159 +315,112 @@ fun PhotoCollageScreen(
                 is CollageUiState.Ready -> {
                     val res = state.result
                     val sizeKb = res.sizeBytes / 1024
-                    ElevatedCard(
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                    CleanSectionCard(
+                        stepNumber = "2",
+                        title = "Hasil Kolase Siap Upload",
+                        subtitle = "Otomatis terkompresi di bawah batas 1 MB perusahaan",
+                        trailingHeader = {
+                            Surface(
+                                color = SuccessGreen.copy(alpha = 0.14f),
+                                shape = RoundedCornerShape(50)
                             ) {
-                                Text(
-                                    text = "Hasil Kolase Siap Upload",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Surface(
-                                    color = SuccessGreen.copy(alpha = 0.15f),
-                                    shape = RoundedCornerShape(20.dp)
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            Icons.Default.CheckCircle,
-                                            contentDescription = null,
-                                            tint = SuccessGreen,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "$sizeKb KB (< 1 MB)",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = SuccessGreen,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.testTag("collage_size_badge")
-                                        )
-                                    }
+                                    Icon(
+                                        Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = SuccessGreen,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "$sizeKb KB (< 1 MB)",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = SuccessGreen,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.testTag("collage_size_badge")
+                                    )
                                 }
                             }
+                        }
+                    ) {
+                        Image(
+                            bitmap = res.bitmap.asImageBitmap(),
+                            contentDescription = "Hasil Kolase 4 Foto",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.outline,
+                                    RoundedCornerShape(12.dp)
+                                ),
+                            contentScale = ContentScale.FillWidth
+                        )
 
-                            Image(
-                                bitmap = res.bitmap.asImageBitmap(),
-                                contentDescription = "Hasil Kolase 4 Foto",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .border(
-                                        1.dp,
-                                        MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                                        RoundedCornerShape(12.dp)
-                                    ),
-                                contentScale = ContentScale.FillWidth
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Button(
-                                    onClick = {
-                                        scope.launch {
-                                            val savedUri = CollageGenerator.saveCollageToGallery(
-                                                context = context,
-                                                jpegBytes = res.jpegBytes,
-                                                locationName = location
-                                            )
-                                            if (savedUri != null) {
-                                                onShowSnackbar("Kolase ($sizeKb KB) berhasil disimpan ke Galeri!")
-                                            } else {
-                                                onShowSnackbar("Gagal menyimpan ke Galeri.")
-                                            }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        val savedUri = CollageGenerator.saveCollageToGallery(
+                                            context = context,
+                                            jpegBytes = res.jpegBytes,
+                                            locationName = location
+                                        )
+                                        if (savedUri != null) {
+                                            onShowSnackbar("Disimpan ke Galeri ($sizeKb KB)!")
+                                        } else {
+                                            onShowSnackbar("Gagal menyimpan ke Galeri.")
                                         }
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .testTag("save_collage_gallery_button")
-                                ) {
-                                    Icon(Icons.Default.Download, contentDescription = null)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Simpan Galeri")
-                                }
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("save_collage_gallery_button")
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Simpan Galeri")
+                            }
 
-                                OutlinedButton(
-                                    onClick = {
-                                        shareCollageFile(context, res.file)
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .testTag("share_collage_file_button")
-                                ) {
-                                    Icon(Icons.Default.Share, contentDescription = null)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Share / Upload")
-                                }
+                            OutlinedButton(
+                                onClick = { shareCollageFile(context, res.file) },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("share_collage_file_button")
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Bagikan File")
                             }
                         }
                     }
                 }
 
                 is CollageUiState.Error -> {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer
-                        ),
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
                             text = state.message,
                             color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.padding(16.dp)
+                            modifier = Modifier.padding(14.dp)
                         )
                     }
                 }
 
-                is CollageUiState.Idle -> {
-                    // Empty state prompt
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.GridView,
-                                contentDescription = null,
-                                modifier = Modifier.size(40.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "Belum ada foto dipilih",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Pilih 4 foto kegiatan PM di atas untuk digabungkan otomatis menjadi 1 file JPEG di bawah 1 MB.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
+                is CollageUiState.Idle -> {}
             }
         }
     }

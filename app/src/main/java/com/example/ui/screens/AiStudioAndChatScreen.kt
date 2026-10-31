@@ -5,6 +5,8 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +24,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -33,21 +36,15 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -83,28 +80,58 @@ fun AiStudioAndChatScreen(
             .fillMaxSize()
             .testTag("ai_studio_and_chat_screen")
     ) {
-        SingleChoiceSegmentedButtonRow(
+        // Sleek Pill Switcher
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surface,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
         ) {
-            SegmentedButton(
-                selected = selectedSubTab == 0,
-                onClick = { selectedSubTab = 0 },
-                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                icon = { Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                modifier = Modifier.testTag("subtab_chatbot_button")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text("Chatbot Teknisi AI")
-            }
-            SegmentedButton(
-                selected = selectedSubTab == 1,
-                onClick = { selectedSubTab = 1 },
-                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                icon = { Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                modifier = Modifier.testTag("subtab_image_ai_button")
-            ) {
-                Text("Edit & Buat Gambar AI")
+                val tabs = listOf(
+                    Triple(0, "Chat Teknisi AI", Icons.Default.Chat),
+                    Triple(1, "Studio Foto AI", Icons.Default.Image)
+                )
+                tabs.forEach { (idx, label, icon) ->
+                    val isSelected = selectedSubTab == idx
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(
+                                if (isSelected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.surface
+                            )
+                            .clickable { selectedSubTab = idx }
+                            .padding(vertical = 10.dp)
+                            .testTag(if (idx == 0) "subtab_chatbot_button" else "subtab_image_ai_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                tint = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -137,17 +164,17 @@ private fun GeminiTechChatbotSection(
     var inputPrompt by remember { mutableStateOf("") }
 
     val quickPrompts = listOf(
-        "Buatkan kalimat Corrective Maintenance untuk penggantian kabel LAN AP",
-        "Apakah speed Up 44 Mbps / Down 66 Mbps di Terminal 3 tergolong optimal?",
-        "Ringkas langkah pengecekan jika Access Point tidak memancarkan SSID"
+        "Buatkan kalimat CM untuk penggantian kabel LAN AP",
+        "Apakah speed Up 44 Mbps / Down 66 Mbps optimal?",
+        "Solusi jika Access Point tidak memancarkan SSID"
     )
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .padding(horizontal = 16.dp)
     ) {
-        // Model Selector Row (gemini-3.8-flash, gemini-4-argon, gemini-3.1-flash-lite)
+        // Model Selector Row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -159,27 +186,24 @@ private fun GeminiTechChatbotSection(
                 FilterChip(
                     selected = selectedModel == option,
                     onClick = { viewModel.setChatModel(option) },
-                    label = { Text(option.label) },
+                    label = { Text(option.label, style = MaterialTheme.typography.labelMedium) },
                     modifier = Modifier.testTag("chat_model_chip_${option.name.lowercase()}")
                 )
             }
             IconButton(
                 onClick = { viewModel.clearChatHistory() },
-                modifier = Modifier.testTag("clear_chat_history_button")
+                modifier = Modifier
+                    .size(32.dp)
+                    .testTag("clear_chat_history_button")
             ) {
                 Icon(
                     Icons.Default.DeleteOutline,
-                    contentDescription = "Bersihkan Riwayat Chat"
+                    contentDescription = "Bersihkan Chat",
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
-
-        Text(
-            text = "Model aktif: ${selectedModel.label} — ${selectedModel.description}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 6.dp)
-        )
 
         // Scrollable Message Thread
         LazyColumn(
@@ -195,7 +219,7 @@ private fun GeminiTechChatbotSection(
                 val containerColor = if (msg.isUser) {
                     MaterialTheme.colorScheme.primary
                 } else {
-                    MaterialTheme.colorScheme.surfaceVariant
+                    MaterialTheme.colorScheme.surface
                 }
                 val contentColor = if (msg.isUser) {
                     MaterialTheme.colorScheme.onPrimary
@@ -209,13 +233,28 @@ private fun GeminiTechChatbotSection(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(
-                            topStart = 16.dp,
-                            topEnd = 16.dp,
-                            bottomStart = if (msg.isUser) 16.dp else 4.dp,
-                            bottomEnd = if (msg.isUser) 4.dp else 16.dp
+                            topStart = 14.dp,
+                            topEnd = 14.dp,
+                            bottomStart = if (msg.isUser) 14.dp else 4.dp,
+                            bottomEnd = if (msg.isUser) 4.dp else 14.dp
                         ),
                         color = containerColor,
-                        modifier = Modifier.widthIn(max = 320.dp)
+                        modifier = Modifier
+                            .widthIn(max = 310.dp)
+                            .then(
+                                if (!msg.isUser) {
+                                    Modifier.border(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.outline,
+                                        RoundedCornerShape(
+                                            topStart = 14.dp,
+                                            topEnd = 14.dp,
+                                            bottomStart = 4.dp,
+                                            bottomEnd = 14.dp
+                                        )
+                                    )
+                                } else Modifier
+                            )
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             if (!msg.isUser && msg.modelUsed.isNotBlank()) {
@@ -233,14 +272,14 @@ private fun GeminiTechChatbotSection(
                                     IconButton(
                                         onClick = {
                                             copyToClipboard(context, "AI Response", msg.text)
-                                            onShowSnackbar("Pesan AI disalin ke Clipboard!")
+                                            onShowSnackbar("Pesan disalin!")
                                         },
-                                        modifier = Modifier.size(24.dp)
+                                        modifier = Modifier.size(22.dp)
                                     ) {
                                         Icon(
                                             Icons.Default.ContentCopy,
                                             contentDescription = "Salin",
-                                            modifier = Modifier.size(14.dp),
+                                            modifier = Modifier.size(13.dp),
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
@@ -259,10 +298,9 @@ private fun GeminiTechChatbotSection(
         }
 
         if (chatError != null) {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer
-                ),
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.errorContainer,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
@@ -270,46 +308,62 @@ private fun GeminiTechChatbotSection(
                 Text(
                     text = chatError!!,
                     color = MaterialTheme.colorScheme.onErrorContainer,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.padding(10.dp)
                 )
             }
         }
 
-        // Quick Prompt Suggestions
+        // Quick Prompt Pills
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(vertical = 4.dp),
+                .padding(vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             quickPrompts.forEach { suggestion ->
-                AssistChip(
-                    onClick = { viewModel.sendChatMessage(suggestion) },
-                    label = { Text(suggestion, maxLines = 1) }
-                )
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(50))
+                        .clickable { viewModel.sendChatMessage(suggestion) }
+                ) {
+                    Text(
+                        text = suggestion,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
             }
         }
 
-        // Input Composer
+        // Clean Input Bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 8.dp),
+                .padding(bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             OutlinedTextField(
                 value = inputPrompt,
                 onValueChange = { inputPrompt = it },
-                placeholder = { Text("Tanya asisten teknisi PM WiFi...") },
+                placeholder = { Text("Tanya asisten teknisi...") },
+                shape = RoundedCornerShape(24.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                ),
                 modifier = Modifier
                     .weight(1f)
                     .testTag("chat_input_field"),
                 maxLines = 3
             )
-            Button(
+            IconButton(
                 onClick = {
                     val toSend = inputPrompt
                     inputPrompt = ""
@@ -317,7 +371,12 @@ private fun GeminiTechChatbotSection(
                 },
                 enabled = inputPrompt.isNotBlank() && !isLoading,
                 modifier = Modifier
-                    .height(52.dp)
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (inputPrompt.isNotBlank() && !isLoading) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surfaceVariant
+                    )
                     .testTag("send_chat_message_button")
             ) {
                 if (isLoading) {
@@ -327,7 +386,13 @@ private fun GeminiTechChatbotSection(
                         color = MaterialTheme.colorScheme.onPrimary
                     )
                 } else {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Kirim Pesan")
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Kirim",
+                        tint = if (inputPrompt.isNotBlank()) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
         }
@@ -358,114 +423,94 @@ private fun NanoBananaImageStudioSection(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            ElevatedCard(
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
+            CleanSectionCard(
+                stepNumber = "AI",
+                title = "Buat & Edit Foto Dokumentasi",
+                subtitle = "Didukung oleh model gemini-nano-banana-2.1"
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "Studio Gambar AI (gemini-nano-banana-2.1)",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
+                    OutlinedButton(
+                        onClick = {
+                            pickSourceImageLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                             )
-                            Text(
-                                text = "Buat ilustrasi baru atau edit/perjelas foto dokumentasi PM dengan perintah teks",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .testTag("pick_ai_edit_source_button")
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                pickSourceImageLauncher.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                )
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("pick_ai_edit_source_button")
-                        ) {
-                            Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (inputBitmap == null) "Pilih Foto untuk Diedit (Opsional)" else "Ganti Foto Sumber")
-                        }
-
-                        if (inputBitmap != null) {
-                            IconButton(onClick = { viewModel.clearAiImageInput() }) {
-                                Icon(Icons.Default.Close, contentDescription = "Hapus Foto Sumber")
-                            }
-                        }
+                        Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (inputBitmap == null) "Pilih Foto Sumber (Opsional)" else "Ganti Foto Sumber")
                     }
 
                     if (inputBitmap != null) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Image(
-                                bitmap = inputBitmap!!.asImageBitmap(),
-                                contentDescription = "Foto Sumber",
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
-                            )
-                            Text(
-                                text = "Mode Edit Gambar Aktif: AI akan memodifikasi foto ini sesuai instruksi di bawah.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.weight(1f)
-                            )
+                        IconButton(onClick = { viewModel.clearAiImageInput() }) {
+                            Icon(Icons.Default.Close, contentDescription = "Hapus Foto")
                         }
                     }
+                }
 
-                    OutlinedTextField(
-                        value = imagePrompt,
-                        onValueChange = { imagePrompt = it },
-                        label = { Text("Prompt Buat / Edit Gambar") },
+                if (inputBitmap != null) {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("ai_image_prompt_input"),
-                        minLines = 2
-                    )
-
-                    Button(
-                        onClick = { viewModel.generateOrEditImageWithAi(imagePrompt) },
-                        enabled = aiImageState !is AiImageUiState.Loading && imagePrompt.isNotBlank(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp)
-                            .testTag("generate_ai_image_button")
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(if (inputBitmap != null) "Edit Foto dengan AI" else "Buat Gambar dengan AI")
+                        Image(
+                            bitmap = inputBitmap!!.asImageBitmap(),
+                            contentDescription = "Foto Sumber",
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                        Text(
+                            text = "Mode Edit Aktif: Foto ini akan dimodifikasi sesuai instruksi teks.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
+                }
+
+                OutlinedTextField(
+                    value = imagePrompt,
+                    onValueChange = { imagePrompt = it },
+                    label = { Text("Instruksi Buat / Edit Gambar") },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("ai_image_prompt_input"),
+                    minLines = 2
+                )
+
+                Button(
+                    onClick = { viewModel.generateOrEditImageWithAi(imagePrompt) },
+                    enabled = aiImageState !is AiImageUiState.Loading && imagePrompt.isNotBlank(),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("generate_ai_image_button")
+                ) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (inputBitmap != null) "Edit Foto dengan AI" else "Buat Gambar Baru dengan AI")
                 }
             }
         }
@@ -473,9 +518,12 @@ private fun NanoBananaImageStudioSection(
         item {
             when (val st = aiImageState) {
                 is AiImageUiState.Loading -> {
-                    ElevatedCard(
+                    Surface(
                         shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        color = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
                     ) {
                         Column(
                             modifier = Modifier
@@ -484,9 +532,9 @@ private fun NanoBananaImageStudioSection(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            CircularProgressIndicator()
+                            CircularProgressIndicator(modifier = Modifier.size(28.dp))
                             Text(
-                                text = "Memproses gambar dengan gemini-nano-banana-2.1 (30-60 detik)...",
+                                text = "Memproses gambar (30-60 detik)...",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
@@ -494,56 +542,48 @@ private fun NanoBananaImageStudioSection(
                 }
 
                 is AiImageUiState.Success -> {
-                    ElevatedCard(
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth()
+                    CleanSectionCard(
+                        stepNumber = "✓",
+                        title = "Hasil Gambar AI",
+                        subtitle = "Siap dimasukkan ke Kolase 4 Foto (< 1 MB)"
                     ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        Image(
+                            bitmap = st.bitmap.asImageBitmap(),
+                            contentDescription = "Hasil Gambar AI",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp)),
+                            contentScale = ContentScale.FillWidth
+                        )
+                        Button(
+                            onClick = {
+                                viewModel.addGeneratedAiImageToCollage(context, st.bitmap)
+                                onShowSnackbar("Ditambahkan ke Kolase 4 Foto (< 1 MB)!")
+                                onNavigateToCollage()
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("send_ai_image_to_collage_button")
                         ) {
-                            Text(
-                                text = "Hasil Gambar AI",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Image(
-                                bitmap = st.bitmap.asImageBitmap(),
-                                contentDescription = "Hasil Gambar AI",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp)),
-                                contentScale = ContentScale.FillWidth
-                            )
-                            Button(
-                                onClick = {
-                                    viewModel.addGeneratedAiImageToCollage(context, st.bitmap)
-                                    onShowSnackbar("Gambar AI ditambahkan ke Kolase 4 Foto (< 1 MB)!")
-                                    onNavigateToCollage()
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("send_ai_image_to_collage_button")
-                            ) {
-                                Icon(Icons.Default.GridView, contentDescription = null)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Masukkan ke Kolase 4 Foto (< 1 MB)")
-                            }
+                            Icon(Icons.Default.GridView, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Masukkan ke Kolase 4 Foto")
                         }
                     }
                 }
 
                 is AiImageUiState.Error -> {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer
-                        ),
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
                             text = st.message,
                             color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.padding(16.dp)
+                            modifier = Modifier.padding(14.dp)
                         )
                     }
                 }
