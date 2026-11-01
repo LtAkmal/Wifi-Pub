@@ -335,7 +335,12 @@ private fun CleanEnterpriseTopBar(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 10.dp)
+                ) {
                     Box(
                         modifier = Modifier
                             .size(38.dp)
@@ -350,18 +355,20 @@ private fun CleanEnterpriseTopBar(
                             modifier = Modifier.size(20.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
                             text = "WiFi PM Helper",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
                         )
                         Text(
-                            text = "CGK Terminal 3 • $displayDate",
+                            text = "CGK T3 • $displayDate",
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
                         )
                     }
                 }
@@ -399,6 +406,7 @@ private fun CleanEnterpriseTopBar(
                         style = MaterialTheme.typography.labelLarge,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
+                        maxLines = 1,
                         color = if (isComplete) SuccessGreen else MaterialTheme.colorScheme.primary
                     )
                 }

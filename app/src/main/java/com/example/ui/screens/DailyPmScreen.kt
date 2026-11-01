@@ -185,7 +185,7 @@ fun DailyPmScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "${pmTodayList.size} dari 10 Lokasi Selesai →",
+                            text = "${pmTodayList.size} dari 10 Lokasi Selesai",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary
                         )
