@@ -18,16 +18,16 @@ jobs:
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: "WiFi PM Helper v1.0.0 (APK Siap Install)"
+          tag_name: v1.2.0
+          name: "WiFi PM Helper v1.2.0 (Fix App Check HP Fisik & UI Baru)"
           body: |
-            ### Download APK WiFi PM Helper (CGK Terminal 3)
-            Klik file **`WiFi-PM-Helper-v1.0.apk`** di bawah bagian **Assets** untuk langsung mengunduh dan menginstal aplikasi di HP Android Anda.
+            ### Download APK WiFi PM Helper v1.2.0 (CGK Terminal 3)
+            Klik file **`WiFi-PM-Helper-v1.2.0.apk`** di bawah bagian **Assets** untuk mengunduh dan menginstal versi terbaru.
             
-            **Fitur:**
-            - Auto-Deteksi Speedtest dengan AI (`Up / Down Mbps`)
-            - Kolase 4 Foto Jadi 1 (`< 1 MB`) dengan Label Lokasi & Tanggal
-            - Generator `REPORT DAILY ROUTINE PREVENTIVE MAINTENANCE` & `*ICT OPERATION DAILY REPORT (CGK).`
-          files: release/WiFi-PM-Helper-v1.0.apk
+            **Pembaruan v1.2.0:**
+            - Fix validasi token Firebase App Check saat dipasang langsung di HP fisik (`RecaptchaAppCheckProviderFactory` + pembersihan cache token lama)
+            - Desain UI/UX baru yang lebih bersih dan rapi (Metrik Upload/Download besar, Bottom Sheet 10 Lokasi T3, Top Bar v1.2.0)
+            - Kolase 4 Foto Jadi 1 (`< 1 MB`) & Generator Today Report CGK
+          files: release/WiFi-PM-Helper-v1.2.0.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

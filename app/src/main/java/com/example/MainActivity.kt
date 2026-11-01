@@ -358,7 +358,7 @@ private fun CleanEnterpriseTopBar(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "WiFi PM Helper",
+                            text = "WiFi PM Helper v${BuildConfig.VERSION_NAME}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,

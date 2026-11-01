@@ -1,29 +1,15 @@
-# WiFi PM Helper (CGK Terminal 3)
+# WiFi PM Helper v1.2.0 (CGK Terminal 3)
 
-## 📲 Download APK Langsung
-- **Lewat Folder Repo**: Klik file 👉 [**`release/WiFi-PM-Helper-v1.0.apk`**](release/WiFi-PM-Helper-v1.0.apk) lalu tekan tombol **Download raw file** (ikon unduh di kanan atas).
-- **Lewat Menu Releases**: Klik bagian **Releases (`v1.0.0`)** di sebelah kanan halaman GitHub, lalu unduh **`WiFi-PM-Helper-v1.0.apk`**.
+## 📲 Download APK Terbaru (v1.2.0)
+- **Lewat Folder Repo**: Klik file 👉 [**`release/WiFi-PM-Helper-v1.2.0.apk`**](release/WiFi-PM-Helper-v1.2.0.apk) lalu tekan tombol **Download raw file**.
+- **Lewat Menu Releases**: Klik bagian **Releases (`v1.2.0`)** di sebelah kanan halaman GitHub, lalu unduh **`WiFi-PM-Helper-v1.2.0.apk`**.
 
 ---
 
-Aplikasi Android asisten teknisi **Preventive Maintenance (PM) & Corrective Maintenance (CM) WiFi Publik** untuk mempercepat pembuatan laporan harian dan dokumentasi foto.
-
-## Fitur Utama
-
-1. **Auto-Deteksi Speedtest dengan AI (`gemini-3.8-flash`)**
-   - Membaca screenshot hasil Speedtest secara otomatis (baik dipilih dari Galeri maupun dikirim langsung melalui tombol **Share** dari aplikasi Speedtest).
-   - Mengekstrak nilai **Upload (Mbps)** dan **Download (Mbps)** secara otomatis ke dalam format `REPORT DAILY ROUTINE PREVENTIVE MAINTENANCE`.
-   - Dilengkapi daftar preset lokasi rutin **Terminal 3 CGK** dan pengisian tanggal otomatis.
-
-2. **Kolase 4 Foto Jadi 1 (`< 1 MB`)**
-   - Menggabungkan 4 foto dokumentasi kegiatan PM ke dalam susunan **Grid 2x2** lengkap dengan label header **Lokasi, Tanggal, dan Hasil Speedtest**.
-   - Menggunakan kompresi JPEG adaptif yang menjamin ukuran file akhir **selalu di bawah 1 MB (`< 950 KB`)**, siap diunggah ke Form Perusahaan.
-
-3. **Rekap Harian Otomatis (`*ICT OPERATION DAILY REPORT (CGK).`)**
-   - Menyimpan progres harian hingga **10 lokasi PM Speedtest** secara lokal di perangkat (Room Database, tanpa perlu login).
-   - Menyediakan form cepat untuk **Corrective Maintenance (CM)** serta pengaturan **Shift, Helpdesk, On Duty, Petugas EOS, dan Officer**.
-   - Menghasilkan teks laporan lengkap siap salin (**1-Tap Copy**) atau kirim langsung ke **WhatsApp**.
-
-4. **Asisten AI Teknisi & Studio Gambar AI**
-   - **Chatbot Teknisi Multi-Model**: Mendukung `gemini-3.8-flash`, `gemini-4-argon`, dan `gemini-3.1-flash-lite`.
-   - **Studio Buat & Edit Gambar (`gemini-nano-banana-2.1`)**: Membuat atau memperjelas foto dokumentasi dengan instruksi teks.
+## Riwayat Pembaruan (Changelog)
+- **v1.2.0**:
+  - Perbaikan autentikasi **Firebase App Check** untuk instalasi langsung di HP fisik.
+  - Perombakan UI/UX menjadi lebih bersih, rapi, dan responsif di layar HP.
+  - Penambahan indikator versi `v1.2.0` langsung di bagian atas aplikasi.
+- **v1.0.0**:
+  - Rilis awal fitur Auto-Scan Speedtest AI, Kolase 4 Foto `< 1 MB`, dan Rekap Today Report CGK.
