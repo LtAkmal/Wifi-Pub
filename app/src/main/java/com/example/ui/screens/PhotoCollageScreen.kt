@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Collections
+import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Share
@@ -59,6 +61,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -79,6 +82,7 @@ fun PhotoCollageScreen(
 
     val collageBitmaps by viewModel.collageBitmaps.collectAsStateWithLifecycle()
     val includeHeader by viewModel.includeCollageHeader.collectAsStateWithLifecycle()
+    val fitEntirePhoto by viewModel.fitEntirePhoto.collectAsStateWithLifecycle()
     val collageState by viewModel.collageState.collectAsStateWithLifecycle()
     val location by viewModel.locationInput.collectAsStateWithLifecycle()
 
@@ -107,12 +111,12 @@ fun PhotoCollageScreen(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // 1. Clean 2x2 Photo Grid Card
+        // 1. Clean 2x2 Photo Grid Card (100% Utuh / Uncropped by Default)
         item {
             CleanSectionCard(
                 stepNumber = "1",
                 title = "Susun 4 Foto Dokumentasi",
-                subtitle = "Ketuk kotak untuk ganti foto atau pilih 4 sekaligus",
+                subtitle = "Tampilan utuh 100% (tidak ada bagian foto yang terpotong)",
                 trailingHeader = {
                     if (collageBitmaps.isNotEmpty()) {
                         IconButton(
@@ -138,20 +142,76 @@ fun PhotoCollageScreen(
                         )
                     },
                     shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .heightIn(min = 48.dp)
                         .testTag("pick_4_photos_button")
                 ) {
                     Icon(Icons.Default.Collections, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        if (collageBitmaps.isEmpty()) "Pilih 4 Foto Sekaligus"
-                        else "Tambah / Ganti Foto (${collageBitmaps.size}/4)"
+                        text = if (collageBitmaps.isEmpty()) "Pilih 4 Foto Sekaligus"
+                        else "Tambah / Ganti Foto (${collageBitmaps.size}/4)",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                // Clean 2x2 Grid
+                // Mode Tampilan Foto Selector (Default: Utuh / Tanpa Potong)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val modes = listOf(
+                        true to "Utuh 100% (Tanpa Potong)",
+                        false to "Penuh Kotak (Crop)"
+                    )
+                    modes.forEach { (isFitMode, label) ->
+                        val selected = fitEntirePhoto == isFitMode
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (selected) MaterialTheme.colorScheme.primary
+                                    else Color.Transparent
+                                )
+                                .clickable { viewModel.setFitEntirePhoto(context, isFitMode) }
+                                .padding(vertical = 8.dp, horizontal = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (isFitMode) {
+                                    Icon(
+                                        imageVector = Icons.Default.CropFree,
+                                        contentDescription = null,
+                                        tint = if (selected) MaterialTheme.colorScheme.onPrimary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selected) MaterialTheme.colorScheme.onPrimary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Clean 2x2 Grid (Uses ContentScale.Fit by default so user sees the entire uncropped photo!)
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     for (row in 0..1) {
                         Row(
@@ -164,9 +224,9 @@ fun PhotoCollageScreen(
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .aspectRatio(1.15f)
+                                        .aspectRatio(0.78f)
                                         .clip(RoundedCornerShape(12.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .background(Color(0xFF0B1120))
                                         .border(
                                             width = 1.dp,
                                             color = MaterialTheme.colorScheme.outline,
@@ -185,22 +245,26 @@ fun PhotoCollageScreen(
                                         Image(
                                             bitmap = bmp.asImageBitmap(),
                                             contentDescription = "Foto ${slotIdx + 1}",
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = ContentScale.Crop
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(if (fitEntirePhoto) 4.dp else 0.dp),
+                                            contentScale = if (fitEntirePhoto) ContentScale.Fit else ContentScale.Crop
                                         )
+                                        // Top-Start Badge so bottom text in Speedtest screenshots is NEVER covered
                                         Box(
                                             modifier = Modifier
-                                                .align(Alignment.BottomStart)
-                                                .padding(8.dp)
+                                                .align(Alignment.TopStart)
+                                                .padding(6.dp)
                                                 .clip(RoundedCornerShape(6.dp))
-                                                .background(Color.Black.copy(alpha = 0.65f))
+                                                .background(Color.Black.copy(alpha = 0.72f))
                                                 .padding(horizontal = 8.dp, vertical = 3.dp)
                                         ) {
                                             Text(
                                                 text = "FOTO ${slotIdx + 1}",
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color = Color.White,
-                                                fontWeight = FontWeight.Bold
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1
                                             )
                                         }
                                         IconButton(
@@ -209,7 +273,7 @@ fun PhotoCollageScreen(
                                                 .align(Alignment.TopEnd)
                                                 .padding(6.dp)
                                                 .size(26.dp)
-                                                .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                                                .background(Color.Black.copy(alpha = 0.65f), CircleShape)
                                         ) {
                                             Icon(
                                                 Icons.Default.Close,
@@ -219,7 +283,10 @@ fun PhotoCollageScreen(
                                             )
                                         }
                                     } else {
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier.padding(8.dp)
+                                        ) {
                                             Icon(
                                                 Icons.Default.AddPhotoAlternate,
                                                 contentDescription = null,
@@ -230,7 +297,8 @@ fun PhotoCollageScreen(
                                             Text(
                                                 text = "Foto ${slotIdx + 1}",
                                                 style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1
                                             )
                                         }
                                     }
@@ -248,16 +316,24 @@ fun PhotoCollageScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp)
+                    ) {
                         Text(
                             text = "Banner Lokasi & Tanggal di Kolase",
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "Menampilkan nama lokasi & hasil speedtest di atas foto",
+                            text = "Menampilkan nama lokasi & hasil speedtest di bagian atas",
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                     Switch(
@@ -305,7 +381,7 @@ fun PhotoCollageScreen(
                         ) {
                             CircularProgressIndicator(modifier = Modifier.size(28.dp))
                             Text(
-                                text = "Mengompresi kolase di bawah 1 MB...",
+                                text = "Menyusun kolase utuh & kompresi < 1 MB...",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
@@ -318,28 +394,30 @@ fun PhotoCollageScreen(
                     CleanSectionCard(
                         stepNumber = "2",
                         title = "Hasil Kolase Siap Upload",
-                        subtitle = "Otomatis terkompresi di bawah batas 1 MB perusahaan",
+                        subtitle = "Seluruh foto tampil utuh & ukuran di bawah 1 MB",
                         trailingHeader = {
                             Surface(
                                 color = SuccessGreen.copy(alpha = 0.14f),
                                 shape = RoundedCornerShape(50)
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
                                         Icons.Default.CheckCircle,
                                         contentDescription = null,
                                         tint = SuccessGreen,
-                                        modifier = Modifier.size(14.dp)
+                                        modifier = Modifier.size(13.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "$sizeKb KB (< 1 MB)",
+                                        text = "$sizeKb KB",
                                         style = MaterialTheme.typography.labelMedium,
                                         color = SuccessGreen,
                                         fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false,
                                         modifier = Modifier.testTag("collage_size_badge")
                                     )
                                 }
@@ -348,7 +426,7 @@ fun PhotoCollageScreen(
                     ) {
                         Image(
                             bitmap = res.bitmap.asImageBitmap(),
-                            contentDescription = "Hasil Kolase 4 Foto",
+                            contentDescription = "Hasil Kolase 4 Foto Utuh",
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
@@ -380,27 +458,29 @@ fun PhotoCollageScreen(
                                     }
                                 },
                                 shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(48.dp)
+                                    .heightIn(min = 48.dp)
                                     .testTag("save_collage_gallery_button")
                             ) {
                                 Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Simpan Galeri")
+                                Text("Simpan Galeri", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
 
                             OutlinedButton(
                                 onClick = { shareCollageFile(context, res.file) },
                                 shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(48.dp)
+                                    .heightIn(min = 48.dp)
                                     .testTag("share_collage_file_button")
                             ) {
                                 Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Bagikan File")
+                                Text("Bagikan File", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     }

@@ -18,16 +18,16 @@ jobs:
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.3.0
-          name: "WiFi PM Helper v1.3.0 (Dukungan 9Router API & Gemini Direct di HP Fisik)"
+          tag_name: v1.4.0
+          name: "WiFi PM Helper v1.4.0 (Kolase 4 Foto 100% Utuh, Fix UI/UX & Smart Studio Foto)"
           body: |
-            ### Download APK WiFi PM Helper v1.3.0 (CGK Terminal 3)
-            Klik file **`WiFi-PM-Helper-v1.3.0.apk`** di bawah bagian **Assets** untuk mengunduh dan menginstal versi terbaru.
+            ### Download APK WiFi PM Helper v1.4.0 (CGK Terminal 3)
+            Klik file **`WiFi-PM-Helper-v1.4.0.apk`** di bawah bagian **Assets** untuk mengunduh dan menginstal versi terbaru.
             
-            **Pembaruan v1.3.0:**
-            - **Integrasi Penuh 9Router API (OpenAI-Compatible) & Gemini API Direct**: Atasi timeout Firebase App Check di HP fisik dengan menghubungkan Base URL, API Key, dan Model dari 9Router milikmu langsung lewat tombol **"Atur API"** di pojok kanan atas.
-            - **Auto-Fetch Model 9Router**: Tersedia tombol *"Cek Koneksi & Ambil Daftar Model"* untuk mengambil daftar model dari `/v1/models` secara otomatis.
-            - Desain UI/UX bersih, Kolase 4 Foto Jadi 1 (`< 1 MB`), & Generator Today Report CGK.
-          files: release/WiFi-PM-Helper-v1.3.0.apk
+            **Pembaruan v1.4.0:**
+            - **Kolase 4 Foto 100% Utuh (Tanpa Terpotong)**: Seluruh bagian foto (atas, bawah, kiri, kanan) kini dirender dengan mode *Fit Center* & kanvas adaptif potret sehingga tidak ada lagi bagian foto/screenshot yang terpotong, tetap terkompresi `< 1 MB`.
+            - **Audit & Perbaikan UI/UX (3x Pass)**: Memperbaiki tombol `"Tutup"` yang terlipat vertikal, tombol `"Gabung 4 Foto (< 1 MB)"` yang terpotong di bawah, dan tanggal pada Top Bar yang terpotong.
+            - **Studio Foto Dokumentasi PM + 9Router Vision**: Mengatasi error `limit: 0` Free Tier Google pada `gemini-nano-banana-2.1` dengan *Smart Studio Enhancer* (Penerangan Otomatis AP, Kontras, Stempel Lokasi & Speedtest) + Inspeksi AI lewat 9Router.
+          files: release/WiFi-PM-Helper-v1.4.0.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

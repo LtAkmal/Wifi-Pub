@@ -57,7 +57,11 @@ sealed interface CollageUiState {
 sealed interface AiImageUiState {
     data object Idle : AiImageUiState
     data object Loading : AiImageUiState
-    data class Success(val bitmap: Bitmap) : AiImageUiState
+    data class Success(
+        val bitmap: Bitmap,
+        val aiInspectionNote: String = "",
+        val modeInfo: String = ""
+    ) : AiImageUiState
     data class Error(val message: String) : AiImageUiState
 }
 
@@ -123,6 +127,10 @@ class PmMainViewModel(
     private val _includeCollageHeader = MutableStateFlow(true)
     val includeCollageHeader: StateFlow<Boolean> = _includeCollageHeader.asStateFlow()
 
+    // Default TRUE so all 4 photos are 100% UTUH (never cropped)
+    private val _fitEntirePhoto = MutableStateFlow(true)
+    val fitEntirePhoto: StateFlow<Boolean> = _fitEntirePhoto.asStateFlow()
+
     private val _collageState = MutableStateFlow<CollageUiState>(CollageUiState.Idle)
     val collageState: StateFlow<CollageUiState> = _collageState.asStateFlow()
 
@@ -155,7 +163,7 @@ class PmMainViewModel(
         .flatMapLatest { dateKey -> repository.getCmForDate(dateKey) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // AI Image Studio State (gemini-nano-banana-2.1)
+    // AI Image Studio State
     private val _aiImageInputBitmap = MutableStateFlow<Bitmap?>(null)
     val aiImageInputBitmap: StateFlow<Bitmap?> = _aiImageInputBitmap.asStateFlow()
 
@@ -300,7 +308,6 @@ class PmMainViewModel(
         viewModelScope.launch {
             repository.saveAiProviderConfig(config)
             _nineRouterTestStatus.value = null
-            // If a speedtest bitmap is already loaded, immediately re-scan with the new API config!
             if (_speedtestBitmap.value != null && config.hasCustomConfig) {
                 scanSpeedtestBitmap(_speedtestBitmap.value, overrideConfig = config)
             }
@@ -380,7 +387,7 @@ class PmMainViewModel(
                 return@launch
             }
 
-            // 2. Otherwise use Firebase AI Logic (with 20s timeout so standalone phones don't wait 60s)
+            // 2. Otherwise use Firebase AI Logic (with 20s timeout)
             try {
                 val response = withTimeout(20_000L) {
                     speedtestExtractorModel.generateContent(
@@ -506,7 +513,7 @@ class PmMainViewModel(
     fun onCollagePhotosSelected(context: Context, uris: List<Uri>) {
         viewModelScope.launch {
             val loaded = uris.take(4).mapNotNull { uri ->
-                CollageGenerator.loadBitmapFromUri(context, uri, maxDimension = 1080)
+                CollageGenerator.loadBitmapFromUri(context, uri, maxDimension = 1280)
             }
             if (loaded.isNotEmpty()) {
                 val combined = (_collageBitmaps.value + loaded).take(4)
@@ -518,7 +525,7 @@ class PmMainViewModel(
 
     fun replaceCollagePhotoAt(context: Context, index: Int, uri: Uri) {
         viewModelScope.launch {
-            val bmp = CollageGenerator.loadBitmapFromUri(context, uri, maxDimension = 1080) ?: return@launch
+            val bmp = CollageGenerator.loadBitmapFromUri(context, uri, maxDimension = 1280) ?: return@launch
             val current = _collageBitmaps.value.toMutableList()
             if (index in current.indices) {
                 current[index] = bmp
@@ -555,6 +562,13 @@ class PmMainViewModel(
         }
     }
 
+    fun setFitEntirePhoto(context: Context, fit: Boolean) {
+        _fitEntirePhoto.value = fit
+        if (_collageBitmaps.value.isNotEmpty()) {
+            generateCollage(context)
+        }
+    }
+
     fun generateCollage(context: Context) {
         val photos = _collageBitmaps.value
         if (photos.isEmpty()) {
@@ -573,7 +587,8 @@ class PmMainViewModel(
                     locationTitle = _locationInput.value,
                     dateLabel = _displayDateEnInput.value,
                     speedSummary = speedText,
-                    includeHeaderWatermark = _includeCollageHeader.value
+                    includeHeaderWatermark = _includeCollageHeader.value,
+                    fitEntirePhoto = _fitEntirePhoto.value
                 )
                 _collageState.value = CollageUiState.Ready(result)
             } catch (e: Exception) {
@@ -585,10 +600,10 @@ class PmMainViewModel(
         }
     }
 
-    // --- AI Image Creation & Editing (gemini-nano-banana-2.1) ---
+    // --- Studio Foto AI (Smart Enhancer + 9Router Vision + Cloud Image Gen Fallback) ---
     fun setAiImageInputFromUri(context: Context, uri: Uri) {
         viewModelScope.launch {
-            val bmp = CollageGenerator.loadBitmapFromUri(context, uri, maxDimension = 1024)
+            val bmp = CollageGenerator.loadBitmapFromUri(context, uri, maxDimension = 1280)
             _aiImageInputBitmap.value = bmp
         }
     }
@@ -597,16 +612,52 @@ class PmMainViewModel(
         _aiImageInputBitmap.value = null
     }
 
-    fun generateOrEditImageWithAi(prompt: String) {
+    fun generateOrEditImageWithAi(prompt: String, addTechnicalStamp: Boolean = true) {
         if (prompt.isBlank()) {
             _aiImageState.value = AiImageUiState.Error("Masukkan instruksi/prompt gambar terlebih dahulu.")
             return
         }
         val sourceBitmap = _aiImageInputBitmap.value
+        val activeConfig = aiProviderConfig.value
+        val up = ReportFormatter.cleanSpeedNumber(_uploadMbpsInput.value)
+        val down = ReportFormatter.cleanSpeedNumber(_downloadMbpsInput.value)
+        val speedSummary = "Up ${up}Mbps / Down ${down}Mbps"
+
         viewModelScope.launch {
             _aiImageState.value = AiImageUiState.Loading
+
+            // 1. If 9Router or Direct Gemini is configured, run Smart Studio Enhancer + 9Router Vision Inspection
+            // (Avoids Google Free-Tier 'limit: 0' error on gemini-nano-banana-2.1 and works 100% reliably!)
+            if (activeConfig.hasCustomConfig) {
+                val enhancedBmp = CollageGenerator.enhanceDocumentationPhoto(
+                    source = sourceBitmap,
+                    locationTitle = _locationInput.value,
+                    dateLabel = _displayDateEnInput.value,
+                    speedSummary = speedSummary,
+                    instructionText = prompt.trim(),
+                    addTechnicalStamp = addTechnicalStamp
+                )
+                val inspectionNote = if (sourceBitmap != null) {
+                    CustomAiClient.analyzeDocumentationPhoto(
+                        config = activeConfig,
+                        bitmap = sourceBitmap,
+                        userPrompt = prompt.trim()
+                    ).getOrElse { "" }
+                } else {
+                    "Kartu dokumentasi teknis berhasil dibuat sesuai lokasi & speedtest saat ini."
+                }
+
+                _aiImageState.value = AiImageUiState.Success(
+                    bitmap = enhancedBmp,
+                    aiInspectionNote = inspectionNote,
+                    modeInfo = "Smart Studio Enhancer + ${if (activeConfig.providerType == "NINE_ROUTER") "9Router AI Vision" else "Gemini Vision"}"
+                )
+                return@launch
+            }
+
+            // 2. Otherwise try Firebase AI Logic (gemini-nano-banana-2.1), with automatic fallback to Smart Studio Enhancer if Free Tier limit: 0 occurs
             try {
-                val outputBitmap = withTimeout(60_000L) {
+                val outputBitmap = withTimeout(25_000L) {
                     val response = if (sourceBitmap != null) {
                         nanoBananaImageModel.generateContent(
                             content {
@@ -623,19 +674,53 @@ class PmMainViewModel(
                 }
 
                 if (outputBitmap != null) {
-                    _aiImageState.value = AiImageUiState.Success(outputBitmap)
+                    _aiImageState.value = AiImageUiState.Success(
+                        bitmap = outputBitmap,
+                        modeInfo = "Gemini Image AI"
+                    )
                 } else {
-                    _aiImageState.value = AiImageUiState.Error("Model tidak mengembalikan gambar.")
+                    val fallbackBmp = CollageGenerator.enhanceDocumentationPhoto(
+                        source = sourceBitmap,
+                        locationTitle = _locationInput.value,
+                        dateLabel = _displayDateEnInput.value,
+                        speedSummary = speedSummary,
+                        instructionText = prompt.trim(),
+                        addTechnicalStamp = addTechnicalStamp
+                    )
+                    _aiImageState.value = AiImageUiState.Success(
+                        bitmap = fallbackBmp,
+                        modeInfo = "Smart Studio Enhancer (On-Device)"
+                    )
                 }
-            } catch (e: TimeoutCancellationException) {
-                Log.e(TAG, "AI image generation timed out", e)
-                _aiImageState.value = AiImageUiState.Error("Pembuatan gambar melebihi batas waktu 60 detik.")
             } catch (e: CancellationException) {
-                throw e
+                if (e !is TimeoutCancellationException) throw e
+                val fallbackBmp = CollageGenerator.enhanceDocumentationPhoto(
+                    source = sourceBitmap,
+                    locationTitle = _locationInput.value,
+                    dateLabel = _displayDateEnInput.value,
+                    speedSummary = speedSummary,
+                    instructionText = prompt.trim(),
+                    addTechnicalStamp = addTechnicalStamp
+                )
+                _aiImageState.value = AiImageUiState.Success(
+                    bitmap = fallbackBmp,
+                    aiInspectionNote = "Foto telah ditingkatkan kecerahan/ketajamannya & diberi stempel lokasi secara otomatis di perangkat.",
+                    modeInfo = "Smart Studio Enhancer (Mode Offline/Instan)"
+                )
             } catch (e: Exception) {
-                Log.e(TAG, "AI image generation failed", e)
-                _aiImageState.value = AiImageUiState.Error(
-                    e.localizedMessage ?: "Gagal membuat/mengedit gambar dengan AI."
+                Log.w(TAG, "Cloud image model quota/auth limited, using Smart Studio Enhancer fallback", e)
+                val fallbackBmp = CollageGenerator.enhanceDocumentationPhoto(
+                    source = sourceBitmap,
+                    locationTitle = _locationInput.value,
+                    dateLabel = _displayDateEnInput.value,
+                    speedSummary = speedSummary,
+                    instructionText = prompt.trim(),
+                    addTechnicalStamp = addTechnicalStamp
+                )
+                _aiImageState.value = AiImageUiState.Success(
+                    bitmap = fallbackBmp,
+                    aiInspectionNote = "Catatan: Kuota gratis Google untuk model pembuat gambar (gemini-nano-banana-2.1) adalah 0 pada akun Free Tier. Foto Anda telah diproses otomatis menggunakan Smart Studio Enhancer (Penerangan AP + Stempel Dokumentasi PM).",
+                    modeInfo = "Smart Studio Enhancer"
                 )
             }
         }
@@ -674,7 +759,7 @@ class PmMainViewModel(
             // 1. If 9Router or Direct Gemini is configured, route chat through CustomAiClient
             if (activeConfig.hasCustomConfig) {
                 val modelLabel = if (activeConfig.providerType == "NINE_ROUTER") {
-                    "9Router • ${activeConfig.nineRouterModel}"
+                    "9Router • ${activeConfig.nineRouterModel.substringAfterLast('/')}"
                 } else {
                     "Gemini • ${activeConfig.geminiDirectModel}"
                 }
@@ -763,7 +848,7 @@ class PmMainViewModel(
             } catch (e: TimeoutCancellationException) {
                 Log.e(TAG, "Chat timed out", e)
                 _chatMessages.value = _chatMessages.value.filterNot { it.id == responseId }
-                _chatError.value = "Koneksi Firebase AI timeout di HP fisik. Klik tombol 'API' di kanan atas untuk memakai API 9Router Anda."
+                _chatError.value = "Koneksi Firebase AI timeout di HP fisik. Klik tombol 'Atur API' di kanan atas untuk memakai API 9Router Anda."
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

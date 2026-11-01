@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -183,12 +184,18 @@ fun DailyPmScreen(
                             text = "Progres PM Harian",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "${pmTodayList.size} dari 10 Lokasi Selesai",
                             style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
@@ -229,7 +236,7 @@ fun DailyPmScreen(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                 )
                             }
-                            .padding(vertical = 16.dp, horizontal = 14.dp)
+                            .padding(vertical = 14.dp, horizontal = 14.dp)
                             .testTag("pick_speedtest_image_button"),
                         contentAlignment = Alignment.Center
                     ) {
@@ -252,17 +259,21 @@ fun DailyPmScreen(
                                 )
                             }
                             Spacer(modifier = Modifier.width(12.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "Pilih Screenshot Speedtest (Auto-AI)",
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontSize = 15.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    fontSize = 14.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = "Otomatis isi angka Upload & Download",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -280,7 +291,7 @@ fun DailyPmScreen(
                             )
                             .padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Image(
                             bitmap = speedtestBitmap!!.asImageBitmap(),
@@ -288,12 +299,13 @@ fun DailyPmScreen(
                             modifier = Modifier
                                 .size(56.dp)
                                 .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surface)
                                 .clickable {
                                     pickSpeedtestLauncher.launch(
                                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                     )
                                 },
-                            contentScale = ContentScale.Crop
+                            contentScale = ContentScale.Fit
                         )
 
                         Column(modifier = Modifier.weight(1f)) {
@@ -307,7 +319,9 @@ fun DailyPmScreen(
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
                                             text = "AI sedang membaca angka...",
-                                            style = MaterialTheme.typography.labelLarge
+                                            style = MaterialTheme.typography.labelLarge,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -324,13 +338,17 @@ fun DailyPmScreen(
                                             text = "Terbaca (${st.providerLabel})",
                                             style = MaterialTheme.typography.labelMedium,
                                             color = SuccessGreen,
-                                            fontWeight = FontWeight.Bold
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                     Text(
                                         text = "Ketuk foto untuk ganti screenshot",
                                         style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                                 is SpeedtestScanState.Error -> {
@@ -338,11 +356,12 @@ fun DailyPmScreen(
                                         text = st.message,
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.error,
-                                        maxLines = 3
+                                        maxLines = 3,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     if (st.suggestApiConfig) {
                                         Text(
-                                            text = "👉 Ketuk di sini untuk isi API 9Router Anda",
+                                            text = "👉 Atur API 9Router",
                                             style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.primary,
                                             fontWeight = FontWeight.Bold,
@@ -355,7 +374,8 @@ fun DailyPmScreen(
                                 is SpeedtestScanState.Idle -> {
                                     Text(
                                         text = "Screenshot siap dipindai",
-                                        style = MaterialTheme.typography.labelMedium
+                                        style = MaterialTheme.typography.labelMedium,
+                                        maxLines = 1
                                     )
                                 }
                             }
@@ -363,18 +383,23 @@ fun DailyPmScreen(
 
                         FilledTonalButton(
                             onClick = { viewModel.scanSpeedtestBitmap() },
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                             modifier = Modifier
-                                .height(36.dp)
+                                .heightIn(min = 38.dp)
                                 .testTag("rescan_speedtest_button")
                         ) {
                             Icon(
                                 Icons.Default.Refresh,
                                 contentDescription = "Scan Ulang",
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Scan", style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                text = "Scan",
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }
@@ -435,7 +460,9 @@ fun DailyPmScreen(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.LocationOn,
@@ -444,12 +471,14 @@ fun DailyPmScreen(
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "Pilih Daftar 10 Lokasi Rutin T3",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = location.ifBlank { "Ketuk untuk memilih lokasi..." },
@@ -483,43 +512,67 @@ fun DailyPmScreen(
                         .testTag("location_input_field")
                 )
 
-                // Clean Toggle for Date, Equipment & Status (keeps UI super clean!)
-                Row(
+                // Clean Toggle for Date, Equipment & Status
+                // FIXED: Left side uses Modifier.weight(1f) and right side uses a non-wrapping pill so "Tutup"/"Ubah" NEVER wraps vertically!
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .clickable { showAdvancedFields = !showAdvancedFields }
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.DateRange,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Tanggal: $displayDateEn • Status Normal ✅",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = if (showAdvancedFields) "Tutup" else "Ubah",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Icon(
-                            imageVector = if (showAdvancedFields) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.DateRange,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Tanggal: $displayDateEn • Normal ✅",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer)
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = if (showAdvancedFields) "Tutup" else "Ubah",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Icon(
+                                imageVector = if (showAdvancedFields) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
 
@@ -577,12 +630,14 @@ fun DailyPmScreen(
                 }
 
                 // Shortcut to 4-Photo Collage (< 1 MB)
+                // FIXED: Uses heightIn(min = 48.dp) and concise single-line text so it is NEVER clipped!
                 OutlinedButton(
                     onClick = onNavigateToCollage,
                     shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(44.dp)
+                        .heightIn(min = 48.dp)
                         .testTag("shortcut_to_collage_button")
                 ) {
                     Icon(
@@ -591,7 +646,12 @@ fun DailyPmScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Gabung 4 Foto < 1 MB untuk Lokasi Ini")
+                    Text(
+                        text = "Gabung 4 Foto (< 1 MB)",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         }
@@ -600,19 +660,26 @@ fun DailyPmScreen(
         item {
             CleanSectionCard(
                 stepNumber = "3",
-                title = "Format Laporan & Simpan",
-                subtitle = "Siap tempel ke WhatsApp & masuk ke Today Report",
+                title = "Format Laporan PM",
+                subtitle = "Siap tempel ke WhatsApp & masuk ke Rekap",
                 trailingHeader = {
-                    Text(
-                        text = if (showPreviewText) "Sembunyikan" else "Lihat Teks",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold,
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(8.dp))
                             .clickable { showPreviewText = !showPreviewText }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                    )
+                    ) {
+                        Text(
+                            text = if (showPreviewText) "Tutup" else "Lihat",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
                 }
             ) {
                 AnimatedVisibility(visible = showPreviewText) {
@@ -647,9 +714,10 @@ fun DailyPmScreen(
                         }
                     },
                     shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 13.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(50.dp)
+                        .heightIn(min = 50.dp)
                         .testTag("save_and_copy_pm_button"),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
@@ -659,7 +727,9 @@ fun DailyPmScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Simpan ke Rekap (${pmTodayList.size + 1}/10) & Salin",
-                        style = MaterialTheme.typography.labelLarge
+                        style = MaterialTheme.typography.labelLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -673,14 +743,15 @@ fun DailyPmScreen(
                             onShowSnackbar("Teks laporan disalin ke Clipboard!")
                         },
                         shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 11.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
+                            .heightIn(min = 46.dp)
                             .testTag("copy_daily_pm_button")
                     ) {
                         Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Salin Teks")
+                        Text("Salin Teks", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
 
                     OutlinedButton(
@@ -688,14 +759,15 @@ fun DailyPmScreen(
                             shareTextToApps(context, formattedDailyReport)
                         },
                         shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 11.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
+                            .heightIn(min = 46.dp)
                             .testTag("share_daily_pm_button")
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Kirim WA")
+                        Text("Kirim WA", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -839,7 +911,9 @@ fun CleanSectionCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = if (trailingHeader != null) 8.dp else 0.dp)
                 ) {
                     Box(
                         modifier = Modifier
@@ -852,21 +926,26 @@ fun CleanSectionCard(
                             text = stepNumber,
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
                         )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = subtitle,
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -916,7 +995,8 @@ private fun SpeedMetricInputCard(
                     text = label,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
                 )
             }
 
@@ -943,6 +1023,7 @@ private fun SpeedMetricInputCard(
                     text = "Mbps",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
                     modifier = Modifier.padding(bottom = 3.dp)
                 )
             }
@@ -961,6 +1042,7 @@ private fun StatusTogglePill(
         shape = RoundedCornerShape(10.dp),
         color = if (checked) SuccessGreen.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant,
         modifier = modifier
+            .heightIn(min = 40.dp)
             .border(
                 width = 1.dp,
                 color = if (checked) SuccessGreen.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outline,
@@ -983,9 +1065,11 @@ private fun StatusTogglePill(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = if (checked) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }

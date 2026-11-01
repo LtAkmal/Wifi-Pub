@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -65,6 +64,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -216,7 +216,7 @@ fun WifiPmHelperApp(
                                 contentDescription = "Input PM"
                             )
                         },
-                        label = { Text("Input PM", fontWeight = FontWeight.Medium) },
+                        label = { Text("Input PM", fontWeight = FontWeight.Medium, maxLines = 1) },
                         modifier = Modifier.testTag("nav_tab_pm_speedtest")
                     )
 
@@ -240,7 +240,7 @@ fun WifiPmHelperApp(
                                 )
                             }
                         },
-                        label = { Text("4 Foto", fontWeight = FontWeight.Medium) },
+                        label = { Text("4 Foto", fontWeight = FontWeight.Medium, maxLines = 1) },
                         modifier = Modifier.testTag("nav_tab_collage")
                     )
 
@@ -265,7 +265,7 @@ fun WifiPmHelperApp(
                                 )
                             }
                         },
-                        label = { Text("Rekap", fontWeight = FontWeight.Medium) },
+                        label = { Text("Rekap", fontWeight = FontWeight.Medium, maxLines = 1) },
                         modifier = Modifier.testTag("nav_tab_today_report")
                     )
 
@@ -279,7 +279,7 @@ fun WifiPmHelperApp(
                                 contentDescription = "AI Tools"
                             )
                         },
-                        label = { Text("Asisten AI", fontWeight = FontWeight.Medium) },
+                        label = { Text("Asisten AI", fontWeight = FontWeight.Medium, maxLines = 1) },
                         modifier = Modifier.testTag("nav_tab_ai_assistant")
                     )
                 }
@@ -314,7 +314,8 @@ fun WifiPmHelperApp(
                 3 -> AiStudioAndChatScreen(
                     viewModel = viewModel,
                     onShowSnackbar = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } },
-                    onNavigateToCollage = { selectedTab = 1 }
+                    onNavigateToCollage = { selectedTab = 1 },
+                    onOpenApiConfig = { showAiConfigDialog = true }
                 )
             }
         }
@@ -340,6 +341,19 @@ private fun CleanEnterpriseTopBar(
     onClickApiConfig: () -> Unit,
     onClickProgress: () -> Unit
 ) {
+    val compactDate = remember(displayDate) {
+        displayDate
+            .replace("January", "Jan")
+            .replace("February", "Feb")
+            .replace("March", "Mar")
+            .replace("April", "Apr")
+            .replace("August", "Aug")
+            .replace("September", "Sep")
+            .replace("October", "Oct")
+            .replace("November", "Nov")
+            .replace("December", "Dec")
+    }
+
     Surface(
         color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth()
@@ -349,7 +363,7 @@ private fun CleanEnterpriseTopBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -361,8 +375,8 @@ private fun CleanEnterpriseTopBar(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(9.dp))
                             .background(MaterialTheme.colorScheme.primaryContainer),
                         contentAlignment = Alignment.Center
                     ) {
@@ -370,30 +384,34 @@ private fun CleanEnterpriseTopBar(
                             imageVector = Icons.Default.Wifi,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(19.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "WiFi PM v${BuildConfig.VERSION_NAME}",
+                            text = "WiFi PM Helper v${BuildConfig.VERSION_NAME}",
                             style = MaterialTheme.typography.titleMedium,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "CGK T3 • $displayDate",
+                            text = "CGK T3 • $compactDate",
                             style = MaterialTheme.typography.labelMedium,
+                            fontSize = 11.5.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     // 9Router / API Config Pill Button
                     Surface(
@@ -403,7 +421,7 @@ private fun CleanEnterpriseTopBar(
                         modifier = Modifier
                             .border(
                                 width = 1.dp,
-                                color = if (hasCustomApi) SuccessGreen.copy(alpha = 0.4f)
+                                color = if (hasCustomApi) SuccessGreen.copy(alpha = 0.45f)
                                 else MaterialTheme.colorScheme.outline,
                                 shape = RoundedCornerShape(50)
                             )
@@ -413,10 +431,12 @@ private fun CleanEnterpriseTopBar(
                         Text(
                             text = if (hasCustomApi) "9Router ✓" else "Atur API",
                             style = MaterialTheme.typography.labelMedium,
+                            fontSize = 11.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (hasCustomApi) SuccessGreen else MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            maxLines = 1
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
 
@@ -431,17 +451,17 @@ private fun CleanEnterpriseTopBar(
                             )
                             .border(
                                 width = 1.dp,
-                                color = if (isComplete) SuccessGreen.copy(alpha = 0.4f)
+                                color = if (isComplete) SuccessGreen.copy(alpha = 0.45f)
                                 else MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
                                 shape = RoundedCornerShape(50)
                             )
                             .clickable { onClickProgress() }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                            .padding(horizontal = 9.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(7.dp)
+                                .size(6.dp)
                                 .clip(CircleShape)
                                 .background(
                                     if (isComplete) SuccessGreen else MaterialTheme.colorScheme.primary
@@ -451,9 +471,10 @@ private fun CleanEnterpriseTopBar(
                         Text(
                             text = "$pmCount/10",
                             style = MaterialTheme.typography.labelLarge,
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
+                            softWrap = false,
                             color = if (isComplete) SuccessGreen else MaterialTheme.colorScheme.primary
                         )
                     }

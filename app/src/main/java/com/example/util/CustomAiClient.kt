@@ -1,6 +1,7 @@
 package com.example.util
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -125,7 +126,8 @@ object CustomAiClient {
                     apiKey = config.geminiDirectApiKey.trim(),
                     model = config.geminiDirectModel.trim().ifEmpty { "gemini-2.5-flash" },
                     prompt = promptText,
-                    base64Jpeg = base64Img
+                    base64Jpeg = base64Img,
+                    expectJson = true
                 )
             } else {
                 callNineRouterVision(
@@ -139,6 +141,44 @@ object CustomAiClient {
 
             val parsed = parseSpeedtestJsonOrRegex(rawResponse)
             Result.success(parsed)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Analyzes a documentation photo using 9Router / Direct Gemini Vision to provide an AI inspection caption
+     * alongside the enhanced studio photo.
+     */
+    suspend fun analyzeDocumentationPhoto(
+        config: AiProviderConfig,
+        bitmap: Bitmap,
+        userPrompt: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val base64Img = bitmapToBase64Jpeg(bitmap)
+            val fullPrompt =
+                "Anda adalah Asisten Teknis PM WiFi Publik Bandara CGK Terminal 3. " +
+                    "Periksa foto dokumentasi ini sesuai instruksi berikut: \"$userPrompt\". " +
+                    "Berikan ringkasan singkat (2-3 kalimat) dalam bahasa Indonesia mengenai kondisi visual perangkat/hasil di foto untuk catatan dokumentasi."
+            val text = if (config.providerType == "GEMINI_DIRECT") {
+                callGeminiDirectVision(
+                    apiKey = config.geminiDirectApiKey.trim(),
+                    model = config.geminiDirectModel.trim().ifEmpty { "gemini-2.5-flash" },
+                    prompt = fullPrompt,
+                    base64Jpeg = base64Img,
+                    expectJson = false
+                )
+            } else {
+                callNineRouterVision(
+                    baseUrl = config.nineRouterBaseUrl,
+                    apiKey = config.nineRouterApiKey.trim(),
+                    model = config.nineRouterModel.trim().ifEmpty { "gemini/gemini-2.5-flash" },
+                    prompt = fullPrompt,
+                    base64Jpeg = base64Img
+                )
+            }
+            Result.success(text.trim())
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -267,7 +307,8 @@ object CustomAiClient {
         apiKey: String,
         model: String,
         prompt: String,
-        base64Jpeg: String
+        base64Jpeg: String,
+        expectJson: Boolean
     ): String {
         val cleanModel = model.removePrefix("models/").removePrefix("gemini/")
         val url = URL("https://generativelanguage.googleapis.com/v1beta/models/$cleanModel:generateContent?key=$apiKey")
@@ -287,9 +328,11 @@ object CustomAiClient {
         }
         val payload = JSONObject().apply {
             put("contents", contents)
-            put("generationConfig", JSONObject().apply {
-                put("responseMimeType", "application/json")
-            })
+            if (expectJson) {
+                put("generationConfig", JSONObject().apply {
+                    put("responseMimeType", "application/json")
+                })
+            }
         }
 
         val responseBody = postJson(url, null, payload.toString())
