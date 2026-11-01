@@ -96,7 +96,8 @@ fun DailyPmScreen(
     viewModel: PmMainViewModel,
     onShowSnackbar: (String) -> Unit,
     onNavigateToTodayReport: () -> Unit,
-    onNavigateToCollage: () -> Unit
+    onNavigateToCollage: () -> Unit,
+    onOpenApiConfig: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -320,7 +321,7 @@ fun DailyPmScreen(
                                         )
                                         Spacer(modifier = Modifier.width(5.dp))
                                         Text(
-                                            text = "AI Berhasil Membaca Speedtest",
+                                            text = "Terbaca (${st.providerLabel})",
                                             style = MaterialTheme.typography.labelMedium,
                                             color = SuccessGreen,
                                             fontWeight = FontWeight.Bold
@@ -337,8 +338,19 @@ fun DailyPmScreen(
                                         text = st.message,
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.error,
-                                        maxLines = 2
+                                        maxLines = 3
                                     )
+                                    if (st.suggestApiConfig) {
+                                        Text(
+                                            text = "👉 Ketuk di sini untuk isi API 9Router Anda",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier
+                                                .padding(top = 4.dp)
+                                                .clickable { onOpenApiConfig() }
+                                        )
+                                    }
                                 }
                                 is SpeedtestScanState.Idle -> {
                                     Text(

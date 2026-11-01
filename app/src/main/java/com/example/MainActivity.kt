@@ -133,9 +133,11 @@ fun WifiPmHelperApp(
     val snackbarHostState = remember { SnackbarHostState() }
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var showAiConfigDialog by rememberSaveable { mutableStateOf(false) }
     val pmTodayList by viewModel.pmReportsForSelectedDate.collectAsStateWithLifecycle()
     val collageBitmaps by viewModel.collageBitmaps.collectAsStateWithLifecycle()
     val displayDateEn by viewModel.displayDateEnInput.collectAsStateWithLifecycle()
+    val aiConfig by viewModel.aiProviderConfig.collectAsStateWithLifecycle()
 
     LaunchedEffect(incomingIntent) {
         val currentIntent = incomingIntent ?: return@LaunchedEffect
@@ -183,6 +185,8 @@ fun WifiPmHelperApp(
             CleanEnterpriseTopBar(
                 displayDate = displayDateEn,
                 pmCount = pmTodayList.size,
+                hasCustomApi = aiConfig.hasCustomConfig,
+                onClickApiConfig = { showAiConfigDialog = true },
                 onClickProgress = { selectedTab = 2 }
             )
         },
@@ -292,7 +296,8 @@ fun WifiPmHelperApp(
                     viewModel = viewModel,
                     onShowSnackbar = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } },
                     onNavigateToTodayReport = { selectedTab = 2 },
-                    onNavigateToCollage = { selectedTab = 1 }
+                    onNavigateToCollage = { selectedTab = 1 },
+                    onOpenApiConfig = { showAiConfigDialog = true }
                 )
 
                 1 -> PhotoCollageScreen(
@@ -314,12 +319,25 @@ fun WifiPmHelperApp(
             }
         }
     }
+
+    if (showAiConfigDialog) {
+        com.example.ui.screens.AiConfigDialog(
+            viewModel = viewModel,
+            onDismiss = { showAiConfigDialog = false },
+            onSaved = { msg ->
+                showAiConfigDialog = false
+                scope.launch { snackbarHostState.showSnackbar(msg) }
+            }
+        )
+    }
 }
 
 @Composable
 private fun CleanEnterpriseTopBar(
     displayDate: String,
     pmCount: Int,
+    hasCustomApi: Boolean,
+    onClickApiConfig: () -> Unit,
     onClickProgress: () -> Unit
 ) {
     Surface(
@@ -339,11 +357,11 @@ private fun CleanEnterpriseTopBar(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .weight(1f)
-                        .padding(end = 10.dp)
+                        .padding(end = 8.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(36.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .background(MaterialTheme.colorScheme.primaryContainer),
                         contentAlignment = Alignment.Center
@@ -352,13 +370,13 @@ private fun CleanEnterpriseTopBar(
                             imageVector = Icons.Default.Wifi,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(19.dp)
                         )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "WiFi PM Helper v${BuildConfig.VERSION_NAME}",
+                            text = "WiFi PM v${BuildConfig.VERSION_NAME}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -373,42 +391,72 @@ private fun CleanEnterpriseTopBar(
                     }
                 }
 
-                // Target Progress Pill
-                val isComplete = pmCount >= 10
                 Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(
-                            if (isComplete) SuccessGreen.copy(alpha = 0.14f)
-                            else MaterialTheme.colorScheme.primaryContainer
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = if (isComplete) SuccessGreen.copy(alpha = 0.4f)
-                            else MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                            shape = RoundedCornerShape(50)
-                        )
-                        .clickable { onClickProgress() }
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Box(
+                    // 9Router / API Config Pill Button
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = if (hasCustomApi) SuccessGreen.copy(alpha = 0.14f)
+                        else MaterialTheme.colorScheme.surfaceVariant,
                         modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isComplete) SuccessGreen else MaterialTheme.colorScheme.primary
+                            .border(
+                                width = 1.dp,
+                                color = if (hasCustomApi) SuccessGreen.copy(alpha = 0.4f)
+                                else MaterialTheme.colorScheme.outline,
+                                shape = RoundedCornerShape(50)
                             )
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "$pmCount/10 PM",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        color = if (isComplete) SuccessGreen else MaterialTheme.colorScheme.primary
-                    )
+                            .clickable { onClickApiConfig() }
+                            .testTag("top_bar_api_config_button")
+                    ) {
+                        Text(
+                            text = if (hasCustomApi) "9Router ✓" else "Atur API",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (hasCustomApi) SuccessGreen else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            maxLines = 1
+                        )
+                    }
+
+                    // Target Progress Pill
+                    val isComplete = pmCount >= 10
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (isComplete) SuccessGreen.copy(alpha = 0.14f)
+                                else MaterialTheme.colorScheme.primaryContainer
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (isComplete) SuccessGreen.copy(alpha = 0.4f)
+                                else MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(50)
+                            )
+                            .clickable { onClickProgress() }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isComplete) SuccessGreen else MaterialTheme.colorScheme.primary
+                                )
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = "$pmCount/10",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            color = if (isComplete) SuccessGreen else MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f))

@@ -13,8 +13,10 @@ import com.example.data.CorrectiveMaintenanceEntity
 import com.example.data.PmReportEntity
 import com.example.data.PmRepository
 import com.example.data.TodayReportConfig
+import com.example.util.AiProviderConfig
 import com.example.util.CollageGenerator
 import com.example.util.CollageResult
+import com.example.util.CustomAiClient
 import com.example.util.ReportFormatter
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
@@ -41,8 +43,8 @@ private const val TAG = "PmMainViewModel"
 sealed interface SpeedtestScanState {
     data object Idle : SpeedtestScanState
     data object Scanning : SpeedtestScanState
-    data class Success(val downloadMbps: String, val uploadMbps: String) : SpeedtestScanState
-    data class Error(val message: String) : SpeedtestScanState
+    data class Success(val downloadMbps: String, val uploadMbps: String, val providerLabel: String = "AI") : SpeedtestScanState
+    data class Error(val message: String, val suggestApiConfig: Boolean = false) : SpeedtestScanState
 }
 
 sealed interface CollageUiState {
@@ -77,7 +79,6 @@ class PmMainViewModel(
     private val repository: PmRepository
 ) : ViewModel() {
 
-    // Selected date key (YYYY-MM-DD), defaults to today
     private val _selectedDateKey = MutableStateFlow(ReportFormatter.todayDateKey())
     val selectedDateKey: StateFlow<String> = _selectedDateKey.asStateFlow()
 
@@ -125,14 +126,25 @@ class PmMainViewModel(
     private val _collageState = MutableStateFlow<CollageUiState>(CollageUiState.Idle)
     val collageState: StateFlow<CollageUiState> = _collageState.asStateFlow()
 
-    // Saved Locations & Report Config from DataStore
+    // Saved Locations, Report Config & AI Provider Config from DataStore
     val savedLocations: StateFlow<List<String>> = repository.savedLocationsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PmRepository.DEFAULT_LOCATIONS)
 
     val reportConfig: StateFlow<TodayReportConfig> = repository.reportConfigFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TodayReportConfig())
 
-    // Reactive PM & CM lists for the selected date
+    val aiProviderConfig: StateFlow<AiProviderConfig> = repository.aiProviderConfigFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AiProviderConfig())
+
+    private val _fetchedNineRouterModels = MutableStateFlow<List<String>>(emptyList())
+    val fetchedNineRouterModels: StateFlow<List<String>> = _fetchedNineRouterModels.asStateFlow()
+
+    private val _nineRouterTestStatus = MutableStateFlow<String?>(null)
+    val nineRouterTestStatus: StateFlow<String?> = _nineRouterTestStatus.asStateFlow()
+
+    private val _isTestingNineRouter = MutableStateFlow(false)
+    val isTestingNineRouter: StateFlow<Boolean> = _isTestingNineRouter.asStateFlow()
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val pmReportsForSelectedDate: StateFlow<List<PmReportEntity>> = _selectedDateKey
         .flatMapLatest { dateKey -> repository.getPmReportsForDate(dateKey) }
@@ -171,6 +183,11 @@ class PmMainViewModel(
     private val _chatError = MutableStateFlow<String?>(null)
     val chatError: StateFlow<String?> = _chatError.asStateFlow()
 
+    private val chatSystemPromptText =
+        "Anda adalah Asisten Teknis Senior ICT Operation & Preventive Maintenance (PM) WiFi Publik Bandara (CGK Terminal 3). " +
+            "Bantu teknisi dalam menganalisis kualitas bandwidth/speedtest WiFi, menyusun laporan Corrective Maintenance (CM) dan Preventive Maintenance (PM), " +
+            "serta memberikan solusi cepat kendala perangkat Access Point dengan bahasa Indonesia yang ringkas, jelas, dan profesional."
+
     // 1. Speedtest Structured Output Model (gemini-3.8-flash)
     private val speedtestSchema = Schema.obj(
         properties = mapOf(
@@ -205,11 +222,7 @@ class PmMainViewModel(
 
     // 3. Chatbot Models with System Instruction
     private val chatSystemInstruction = content {
-        text(
-            "Anda adalah Asisten Teknis Senior ICT Operation & Preventive Maintenance (PM) WiFi Publik Bandara (CGK Terminal 3). " +
-                "Bantu teknisi dalam menganalisis kualitas bandwidth/speedtest WiFi, menyusun laporan Corrective Maintenance (CM) dan Preventive Maintenance (PM), " +
-                "serta memberikan solusi cepat kendala perangkat Access Point dengan bahasa Indonesia yang ringkas, jelas, dan profesional."
-        )
+        text(chatSystemPromptText)
     }
 
     private val flashChatModel by lazy {
@@ -283,7 +296,37 @@ class PmMainViewModel(
         }
     }
 
-    // --- Speedtest Multimodal Extraction ---
+    fun saveAiProviderConfig(config: AiProviderConfig) {
+        viewModelScope.launch {
+            repository.saveAiProviderConfig(config)
+            _nineRouterTestStatus.value = null
+            // If a speedtest bitmap is already loaded, immediately re-scan with the new API config!
+            if (_speedtestBitmap.value != null && config.hasCustomConfig) {
+                scanSpeedtestBitmap(_speedtestBitmap.value, overrideConfig = config)
+            }
+        }
+    }
+
+    fun testAndFetchNineRouterModels(baseUrl: String, apiKey: String) {
+        viewModelScope.launch {
+            _isTestingNineRouter.value = true
+            _nineRouterTestStatus.value = "Menghubungi server 9Router..."
+            val res = CustomAiClient.fetchNineRouterModels(baseUrl, apiKey)
+            _isTestingNineRouter.value = false
+            res.onSuccess { models ->
+                _fetchedNineRouterModels.value = models
+                _nineRouterTestStatus.value = if (models.isNotEmpty()) {
+                    "Terhubung! Ditemukan ${models.size} model (ketuk model di bawah untuk memilih)."
+                } else {
+                    "Terhubung ke server, namun daftar /v1/models kosong. Silakan ketik nama model manual."
+                }
+            }.onFailure { err ->
+                _nineRouterTestStatus.value = "Gagal terhubung: ${err.localizedMessage ?: "Periksa URL & API Key"}"
+            }
+        }
+    }
+
+    // --- Speedtest Multimodal Extraction (Supports 9Router / Direct Gemini / Firebase AI) ---
     fun onSpeedtestImageSelected(context: Context, uri: Uri, autoScan: Boolean = true) {
         viewModelScope.launch {
             val bitmap = CollageGenerator.loadBitmapFromUri(context, uri, maxDimension = 1280)
@@ -298,15 +341,48 @@ class PmMainViewModel(
         }
     }
 
-    fun scanSpeedtestBitmap(bitmap: Bitmap? = _speedtestBitmap.value) {
+    fun scanSpeedtestBitmap(
+        bitmap: Bitmap? = _speedtestBitmap.value,
+        overrideConfig: AiProviderConfig? = null
+    ) {
         if (bitmap == null) {
             _scanState.value = SpeedtestScanState.Error("Pilih screenshot Speedtest terlebih dahulu.")
             return
         }
+        val activeConfig = overrideConfig ?: aiProviderConfig.value
+
         viewModelScope.launch {
             _scanState.value = SpeedtestScanState.Scanning
+
+            // 1. If 9Router or Direct Gemini API Key is configured, use it directly!
+            if (activeConfig.hasCustomConfig) {
+                val providerLabel = if (activeConfig.providerType == "NINE_ROUTER") {
+                    "9Router (${activeConfig.nineRouterModel.substringAfterLast('/')})"
+                } else {
+                    "Gemini API"
+                }
+                val result = CustomAiClient.scanSpeedtestImage(activeConfig, bitmap)
+                result.onSuccess { (downClean, upClean) ->
+                    _downloadMbpsInput.value = downClean
+                    _uploadMbpsInput.value = upClean
+                    _scanState.value = SpeedtestScanState.Success(
+                        downloadMbps = downClean,
+                        uploadMbps = upClean,
+                        providerLabel = providerLabel
+                    )
+                }.onFailure { err ->
+                    Log.e(TAG, "Custom AI speedtest scan failed", err)
+                    _scanState.value = SpeedtestScanState.Error(
+                        message = err.localizedMessage ?: "Gagal membaca Speedtest lewat $providerLabel.",
+                        suggestApiConfig = true
+                    )
+                }
+                return@launch
+            }
+
+            // 2. Otherwise use Firebase AI Logic (with 20s timeout so standalone phones don't wait 60s)
             try {
-                val response = withTimeout(60_000L) {
+                val response = withTimeout(20_000L) {
                     speedtestExtractorModel.generateContent(
                         content {
                             image(bitmap)
@@ -319,7 +395,10 @@ class PmMainViewModel(
                 }
                 val jsonText = response.text
                 if (jsonText.isNullOrBlank()) {
-                    _scanState.value = SpeedtestScanState.Error("AI mengembalikan hasil kosong.")
+                    _scanState.value = SpeedtestScanState.Error(
+                        message = "AI mengembalikan hasil kosong.",
+                        suggestApiConfig = true
+                    )
                     return@launch
                 }
 
@@ -334,17 +413,22 @@ class PmMainViewModel(
                 _uploadMbpsInput.value = upClean
                 _scanState.value = SpeedtestScanState.Success(
                     downloadMbps = downClean,
-                    uploadMbps = upClean
+                    uploadMbps = upClean,
+                    providerLabel = "Firebase AI"
                 )
             } catch (e: TimeoutCancellationException) {
                 Log.e(TAG, "Speedtest scan timed out", e)
-                _scanState.value = SpeedtestScanState.Error("Waktu deteksi habis (60 detik). Silakan coba lagi.")
+                _scanState.value = SpeedtestScanState.Error(
+                    message = "Koneksi Firebase AI timeout di HP fisik. Hubungkan API 9Router / Gemini Anda lewat tombol 'Atur API'.",
+                    suggestApiConfig = true
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Speedtest scan failed", e)
                 _scanState.value = SpeedtestScanState.Error(
-                    e.localizedMessage ?: "Gagal mendeteksi angka Speedtest."
+                    message = "Perlu API 9Router / Gemini untuk HP fisik: ${e.localizedMessage ?: "Gagal"}",
+                    suggestApiConfig = true
                 )
             }
         }
@@ -371,7 +455,6 @@ class PmMainViewModel(
             repository.addCustomLocation(entity.location)
             repository.insertPmReport(entity)
             val nextIndex = pmReportsForSelectedDate.value.size + 1
-            // Automatically advance location suggestion to next unvisited default location if available
             val usedLocations = (pmReportsForSelectedDate.value.map { it.location } + entity.location).toSet()
             val nextSuggested = savedLocations.value.firstOrNull { it !in usedLocations }
             if (nextSuggested != null) {
@@ -564,7 +647,7 @@ class PmMainViewModel(
         generateCollage(context)
     }
 
-    // --- Multi-Turn Gemini Chatbot ---
+    // --- Multi-Turn Chatbot (Supports 9Router / Direct Gemini / Firebase AI) ---
     fun setChatModel(option: ChatModelOption) {
         _selectedChatModel.value = option
     }
@@ -574,6 +657,7 @@ class PmMainViewModel(
         if (trimmed.isEmpty() || _isChatLoading.value) return
 
         val currentModelOption = _selectedChatModel.value
+        val activeConfig = aiProviderConfig.value
         val userMsg = ChatMessageUi(
             id = System.currentTimeMillis(),
             isUser = true,
@@ -586,6 +670,45 @@ class PmMainViewModel(
 
         viewModelScope.launch {
             val responseId = System.currentTimeMillis() + 1L
+
+            // 1. If 9Router or Direct Gemini is configured, route chat through CustomAiClient
+            if (activeConfig.hasCustomConfig) {
+                val modelLabel = if (activeConfig.providerType == "NINE_ROUTER") {
+                    "9Router • ${activeConfig.nineRouterModel}"
+                } else {
+                    "Gemini • ${activeConfig.geminiDirectModel}"
+                }
+                _chatMessages.value = _chatMessages.value + ChatMessageUi(
+                    id = responseId,
+                    isUser = false,
+                    text = "...",
+                    modelUsed = modelLabel,
+                    isStreaming = true
+                )
+                val historyPairs = priorHistory.map { it.isUser to it.text }
+                val res = CustomAiClient.sendChatCompletion(
+                    config = activeConfig,
+                    systemInstruction = chatSystemPromptText,
+                    history = historyPairs,
+                    newMessage = trimmed
+                )
+                res.onSuccess { reply ->
+                    _chatMessages.value = _chatMessages.value.map { item ->
+                        if (item.id == responseId) {
+                            item.copy(text = reply, isStreaming = false)
+                        } else {
+                            item
+                        }
+                    }
+                }.onFailure { err ->
+                    _chatMessages.value = _chatMessages.value.filterNot { it.id == responseId }
+                    _chatError.value = err.localizedMessage ?: "Gagal menghubungi API 9Router / Gemini."
+                }
+                _isChatLoading.value = false
+                return@launch
+            }
+
+            // 2. Otherwise use Firebase AI Logic
             val accumulated = StringBuilder()
             try {
                 val activeModel = when (currentModelOption) {
@@ -594,7 +717,6 @@ class PmMainViewModel(
                     ChatModelOption.FLASH_LITE -> flashLiteChatModel
                 }
 
-                // Convert existing messages into Firebase AI Content history
                 val sdkHistory = priorHistory.map { msg ->
                     content(role = if (msg.isUser) "user" else "model") {
                         text(msg.text)
@@ -602,7 +724,6 @@ class PmMainViewModel(
                 }
                 val chat = activeModel.startChat(history = sdkHistory)
 
-                // Add placeholder streaming message
                 _chatMessages.value = _chatMessages.value + ChatMessageUi(
                     id = responseId,
                     isUser = false,
@@ -611,7 +732,7 @@ class PmMainViewModel(
                     isStreaming = true
                 )
 
-                withTimeout(60_000L) {
+                withTimeout(25_000L) {
                     chat.sendMessageStream(trimmed).collect { chunk ->
                         val partText = chunk.text.orEmpty()
                         accumulated.append(partText)
@@ -642,13 +763,13 @@ class PmMainViewModel(
             } catch (e: TimeoutCancellationException) {
                 Log.e(TAG, "Chat timed out", e)
                 _chatMessages.value = _chatMessages.value.filterNot { it.id == responseId }
-                _chatError.value = "Waktu respon chat habis (60 detik). Silakan coba lagi."
+                _chatError.value = "Koneksi Firebase AI timeout di HP fisik. Klik tombol 'API' di kanan atas untuk memakai API 9Router Anda."
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Chat failed", e)
                 _chatMessages.value = _chatMessages.value.filterNot { it.id == responseId }
-                _chatError.value = e.localizedMessage ?: "Gagal mengirim pesan ke Gemini."
+                _chatError.value = e.localizedMessage ?: "Gagal mengirim pesan."
             } finally {
                 _isChatLoading.value = false
             }

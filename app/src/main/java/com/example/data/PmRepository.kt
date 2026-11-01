@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.util.AiProviderConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -22,6 +23,14 @@ class PmRepository(
         private val KEY_PETUGAS_EOS = stringPreferencesKey("petugas_eos")
         private val KEY_OFFICERS = stringPreferencesKey("officers")
         private val KEY_CUSTOM_LOCATIONS = stringPreferencesKey("custom_locations")
+
+        // Custom AI Provider (9Router / Direct Gemini) keys
+        private val KEY_AI_PROVIDER_TYPE = stringPreferencesKey("ai_provider_type")
+        private val KEY_9ROUTER_BASE_URL = stringPreferencesKey("ninerouter_base_url")
+        private val KEY_9ROUTER_API_KEY = stringPreferencesKey("ninerouter_api_key")
+        private val KEY_9ROUTER_MODEL = stringPreferencesKey("ninerouter_model")
+        private val KEY_GEMINI_DIRECT_KEY = stringPreferencesKey("gemini_direct_key")
+        private val KEY_GEMINI_DIRECT_MODEL = stringPreferencesKey("gemini_direct_model")
 
         val DEFAULT_LOCATIONS = listOf(
             "Area R. Tunggu samping mamma roti loby T3 Inter, Terminal 3",
@@ -50,6 +59,18 @@ class PmRepository(
         )
     }
 
+    val aiProviderConfigFlow: Flow<AiProviderConfig> = context.dataStore.data.map { prefs ->
+        val defaults = AiProviderConfig()
+        AiProviderConfig(
+            providerType = prefs[KEY_AI_PROVIDER_TYPE] ?: defaults.providerType,
+            nineRouterBaseUrl = prefs[KEY_9ROUTER_BASE_URL] ?: defaults.nineRouterBaseUrl,
+            nineRouterApiKey = prefs[KEY_9ROUTER_API_KEY] ?: defaults.nineRouterApiKey,
+            nineRouterModel = prefs[KEY_9ROUTER_MODEL] ?: defaults.nineRouterModel,
+            geminiDirectApiKey = prefs[KEY_GEMINI_DIRECT_KEY] ?: defaults.geminiDirectApiKey,
+            geminiDirectModel = prefs[KEY_GEMINI_DIRECT_MODEL] ?: defaults.geminiDirectModel
+        )
+    }
+
     val savedLocationsFlow: Flow<List<String>> = context.dataStore.data.map { prefs ->
         val raw = prefs[KEY_CUSTOM_LOCATIONS]
         if (raw.isNullOrBlank()) {
@@ -69,6 +90,17 @@ class PmRepository(
             prefs[KEY_APLUSAN_SHIFT] = config.aplusanShiftLabel
             prefs[KEY_PETUGAS_EOS] = config.petugasEos
             prefs[KEY_OFFICERS] = config.officers
+        }
+    }
+
+    suspend fun saveAiProviderConfig(config: AiProviderConfig) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_AI_PROVIDER_TYPE] = config.providerType
+            prefs[KEY_9ROUTER_BASE_URL] = config.nineRouterBaseUrl.trim()
+            prefs[KEY_9ROUTER_API_KEY] = config.nineRouterApiKey.trim()
+            prefs[KEY_9ROUTER_MODEL] = config.nineRouterModel.trim()
+            prefs[KEY_GEMINI_DIRECT_KEY] = config.geminiDirectApiKey.trim()
+            prefs[KEY_GEMINI_DIRECT_MODEL] = config.geminiDirectModel.trim()
         }
     }
 
