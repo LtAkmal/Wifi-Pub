@@ -1,0 +1,37 @@
+name: Publish APK to GitHub Releases
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release with APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.5.0
+          name: "WiFi PM Helper v1.5.0 (Speedtest & WiFi Analyzer Bawaan, Kamera Auto 4-Foto, Watermark & Edit CM)"
+          body: |
+            ### Download APK WiFi PM Helper v1.5.0 (CGK Terminal 3)
+            Klik file **`WiFi-PM-Helper-v1.5.0.apk`** di bawah bagian **Assets** untuk mengunduh dan menginstal versi terbaru.
+            
+            **Pembaruan v1.5.0:**
+            - **Built-in Speedtest (Real Telemetry + Auto-Input + Auto-Screenshot ke Foto 3)**: UI/UX Speedtest gelap lengkap dengan tombol `GO`, deteksi ISP & tipe HP otomatis, pengukuran Download/Upload real-time, langsung mengisi form PM dan otomatis menyimpan screenshot ke **Foto 3**.
+            - **Built-in WiFi Analyzer (Access Points + Analog dBm Gauge + Auto-Screenshot ke Foto 4)**: Menampilkan daftar Access Point real-time (`2.4 | 5 | 6 GHz`, `IN RANGE`, `by Strength`, SSID, BSSID, jarak meter, frekuensi/channel `CH`, keamanan/kecepatan link/vendor `[Huawei]`/`[TP-Link]`, dan jarum analog `-dBm`) serta otomatis menyimpan screenshot ke **Foto 4**.
+            - **Kamera Dokumentasi Langsung (Foto 1 & Foto 2)**: Ambil foto langsung dari dalam aplikasi untuk otomatis mengisi **Foto 1** dan **Foto 2** pada sesi 4 Foto.
+            - **Watermark Wajib di Bawah Kolase 4 Foto**: Setiap hasil susunan 4 Foto Dokumentasi dilengkapi watermark di bagian paling bawah (`DD/MM/YY`, `App By Akmal Satrio N`, `Visit https://akmal-satrio-n.work.gd`).
+            - **Lokasi PM Otomatis Tersimpan**: Menghapus daftar lokasi bawaan dan otomatis menyimpan setiap lokasi yang diketik user agar tidak perlu mengetik ulang saat PM di lokasi yang sama.
+            - **Edit Corrective Maintenance (CM) & Background Placeholder**: Data CM yang sudah di-input kini bisa di-edit kembali kapan saja, dan form CM menggunakan teks bayangan (*placeholder*) sehingga tidak perlu menghapus teks manual.
+            - **1-Tap Shift Toggle**: Pilihan instan `Pagi (SH1)` dan `Malam (SH2)` tanpa perlu ketik manual.
+          files: release/WiFi-PM-Helper-v1.5.0.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
