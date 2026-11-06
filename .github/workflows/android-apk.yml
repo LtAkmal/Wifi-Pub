@@ -1,0 +1,33 @@
+name: Publish APK to GitHub Releases
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release with APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.8.0
+          name: "WiFi PM Helper v1.8.0 (Detail Access Point WiFi Analyzer Saat Diklik, Fix Lokasi Kolase & Watermark HH:mm:ss)"
+          body: |
+            ### Download APK WiFi PM Helper v1.8.0 (CGK Terminal 3)
+            Klik file **`WiFi-PM-Helper-v1.8.0.apk`** di bawah bagian **Assets** untuk mengunduh dan menginstal versi terbaru.
+            
+            **Pembaruan v1.8.0:**
+            - **Fitur Klik Detail Access Point di WiFi Analyzer (Persis Original)**: Mengetuk salah satu WiFi / SSID pada daftar WiFi Analyzer kini menampilkan *bottom sheet* detail lengkap: **Gauge Lingkaran Cyan (`-dBm`)**, status `• Connected`, **Band (`5 GHz`)**, **Channel (`149`)**, **Width (`20 MHz`)**, **Frequency (`5745 MHz`)**, **IP address (`172.18.108.140`)**, **Security (`[ESS]`)**, **Vendor Lengkap (`Hewlett Packard Enterprise`)**, **Distance (`2m`)**, **BSSID**, serta tombol **`Rename`** — dan otomatis masuk ke screenshot **Foto 4**.
+            - **Sinkronisasi Otomatis Lokasi Kolase & Watermark `DD/MM/YY • HH:mm:ss`**.
+            - **Registrasi Resmi `Test ID` Speedtest.net (`https://www.speedtest.net/result/<Test_ID>`)**.
+          files: release/WiFi-PM-Helper-v1.8.0.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
