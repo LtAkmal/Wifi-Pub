@@ -741,33 +741,18 @@ private fun AddOrEditCorrectiveMaintenanceDialog(
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Deteksi Screenshot CM by AI",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    Surface(
-                                        shape = RoundedCornerShape(50),
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                                    ) {
-                                        Text(
-                                            text = "${cmScanBitmaps.size}/10 Foto",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
                                 Text(
-                                    text = "Upload 1 s/d 10 screenshot laporan CM di Grup WA / foto kegiatan sekaligus, AI otomatis mengisi 7 kolom di bawah.",
+                                    text = "Deteksi Foto / Screenshot CM by AI",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "Upload 1–10 screenshot laporan CM di Grup WA / foto kegiatan, AI otomatis mengisi 7 kolom di bawah.",
                                     style = MaterialTheme.typography.bodySmall,
                                     fontSize = 11.sp,
                                     lineHeight = 14.5.sp,
@@ -919,7 +904,7 @@ private fun AddOrEditCorrectiveMaintenanceDialog(
                                             }
                                             is CmScanState.Idle -> {
                                                 Text(
-                                                    text = "${cmScanBitmaps.size} foto siap dipindai AI.",
+                                                    text = "${cmScanBitmaps.size}/10 foto siap dipindai AI.",
                                                     style = MaterialTheme.typography.labelMedium,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
@@ -969,7 +954,7 @@ private fun AddOrEditCorrectiveMaintenanceDialog(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = when {
-                                        cmScanBitmaps.isEmpty() -> "Deteksi Foto by AI (Maks 10)"
+                                        cmScanBitmaps.isEmpty() -> "Deteksi Foto by AI"
                                         cmScanBitmaps.size < 10 -> "Tambah Foto (${cmScanBitmaps.size}/10)"
                                         else -> "Ganti 10 Foto"
                                     },

@@ -1,11 +1,13 @@
-# WiFi PM Helper v2.1.0 (CGK)
+# WiFi PM Helper v2.1.1 (CGK)
 
-## 📲 Download APK Terbaru (v2.1.0)
-- **Lewat Menu Releases**: Klik bagian [**Releases (`v2.1.0`)**](https://github.com/LtAkmal/Wifi-Pub/releases/tag/v2.1.0) di sebelah kanan halaman GitHub, lalu unduh **`WiFi-PM-Helper-v2.1.0.apk`**.
+## 📲 Download APK Terbaru (v2.1.1)
+- **Lewat Menu Releases**: Klik bagian [**Releases (`v2.1.1`)**](https://github.com/LtAkmal/Wifi-Pub/releases/tag/v2.1.1) di sebelah kanan halaman GitHub, lalu unduh **`WiFi-PM-Helper-v2.1.1.apk`**.
 
 ---
 
 ## Riwayat Pembaruan (Changelog)
+- **v2.1.1**:
+  - **Perbaikan Tampilan Teks Kartu Deteksi Foto / Screenshot CM by AI (Maks 10 Foto)**: Merapikan tata letak judul dan deskripsi pada dialog *Tambah / Edit Corrective Maintenance* agar teks rapi dan proporsional tanpa badge yang terhimpit vertikal, tetap mendukung pemilihan 1 hingga 10 foto/screenshot sekaligus.
 - **v2.1.0**:
   - **Upload s/d 10 Foto / Screenshot sekaligus untuk Deteksi Corrective Maintenance (CM) by AI**: Kini pada dialog *Tambah / Edit Corrective Maintenance*, Anda dapat memilih **1 hingga 10 foto/screenshot sekaligus** (misalnya tangkapan layar laporan CM panjang di Grup WhatsApp yang terbagi menjadi beberapa bagian + foto kegiatan/speedtest). Dilengkapi *preview thumbnail strip* `#1..#10`, tombol hapus per foto, tambah foto hingga 10, dan AI otomatis menggabungkan seluruh isi screenshot ke dalam 7 kolom CM.
 - **v2.0.0**:

@@ -18,16 +18,15 @@ jobs:
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.1.0
-          name: "WiFi PM Helper v2.1.0 (Deteksi s/d 10 Foto/Screenshot CM by AI + CGK)"
+          tag_name: v2.1.1
+          name: "WiFi PM Helper v2.1.1 (Fix UI Deteksi s/d 10 Foto/Screenshot CM by AI + CGK)"
           body: |
-            ### Download APK WiFi PM Helper v2.1.0 (CGK)
-            Klik file **`WiFi-PM-Helper-v2.1.0.apk`** di bawah bagian **Assets** untuk mengunduh dan menginstal versi terbaru.
+            ### Download APK WiFi PM Helper v2.1.1 (CGK)
+            Klik file **`WiFi-PM-Helper-v2.1.1.apk`** di bawah bagian **Assets** untuk mengunduh dan menginstal versi terbaru.
             
-            **Pembaruan v2.1.0:**
-            - **Upload s/d 10 Foto / Screenshot untuk Deteksi Corrective Maintenance (CM) by AI**: Kini mendukung pemilihan **1 hingga 10 screenshot/foto sekaligus** pada dialog *Tambah / Edit Corrective Maintenance*. AI otomatis membaca dan menggabungkan informasi dari seluruh screenshot untuk mengisi ke-7 kolom CM (`Judul Kegiatan 🛠️`, `Lokasi`, `Nama Peralatan`, `Kendala`, `Issue`, `Action per baris`, dan `Status per baris`).
-            - **Update Label Bandara CGK (T1–T3)**: Pembaruan identitas header menjadi `CGK` untuk mencakup Terminal 1–3 Bandara Soekarno-Hatta.
-            - **Upload 4 foto PM terpisah ke NAS + riwayat di https://akmal-satrio-n.work.gd/pm/**: Tetap mendukung pengiriman otomatis/manual 4 foto PM beserta metadata ke NAS.
-          files: release/WiFi-PM-Helper-v2.1.0.apk
+            **Pembaruan v2.1.1:**
+            - **Perbaikan Tampilan Kartu Deteksi Foto / Screenshot CM by AI**: Merapikan tata letak teks judul, deskripsi, dan tombol pada dialog *Tambah / Edit Corrective Maintenance* agar bersih dan proporsional.
+            - **Upload s/d 10 Foto / Screenshot untuk Deteksi Corrective Maintenance (CM) by AI**: Mendukung pemilihan **1 hingga 10 screenshot/foto sekaligus**, lengkap dengan deretan *thumbnail* `#1..#10` dan pengisian 7 kolom CM otomatis.
+          files: release/WiFi-PM-Helper-v2.1.1.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
