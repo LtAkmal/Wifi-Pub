@@ -56,15 +56,24 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import com.example.data.CorrectiveMaintenanceEntity
 import com.example.data.PmReportEntity
 import com.example.data.TodayReportConfig
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.SuccessGreen
 import com.example.util.ReportFormatter
+import com.example.viewmodel.CmScanState
 import com.example.viewmodel.PmMainViewModel
 
 @Composable
@@ -72,7 +81,8 @@ fun TodayReportScreen(
     viewModel: PmMainViewModel,
     onShowSnackbar: (String) -> Unit,
     onNavigateToAddPm: () -> Unit,
-    onOpenNasConfig: () -> Unit = {}
+    onOpenNasConfig: () -> Unit = {},
+    onOpenApiConfig: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -371,10 +381,11 @@ fun TodayReportScreen(
             CleanSectionCard(
                 stepNumber = "2",
                 title = "Corrective Maintenance (${cmList.size})",
-                subtitle = "Ketuk tombol Edit (pensil) untuk mengubah data CM tanpa buat ulang",
+                subtitle = "Bisa isi otomatis lewat Deteksi Screenshot AI atau ketuk Edit (pensil)",
                 trailingHeader = {
                     FilledTonalButton(
                         onClick = {
+                            viewModel.resetCmScanState()
                             editingCmItem = null
                             showAddCmDialog = true
                         },
@@ -415,6 +426,7 @@ fun TodayReportScreen(
                                         RoundedCornerShape(10.dp)
                                     )
                                     .clickable {
+                                        viewModel.resetCmScanState()
                                         editingCmItem = cm
                                         showAddCmDialog = true
                                     }
@@ -448,6 +460,7 @@ fun TodayReportScreen(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     IconButton(
                                         onClick = {
+                                            viewModel.resetCmScanState()
                                             editingCmItem = cm
                                             showAddCmDialog = true
                                         },
@@ -551,8 +564,12 @@ fun TodayReportScreen(
 
     if (showAddCmDialog) {
         AddOrEditCorrectiveMaintenanceDialog(
+            viewModel = viewModel,
             editingCm = editingCmItem,
+            onShowSnackbar = onShowSnackbar,
+            onOpenApiConfig = onOpenApiConfig,
             onDismiss = {
+                viewModel.resetCmScanState()
                 showAddCmDialog = false
                 editingCmItem = null
             },
@@ -582,6 +599,7 @@ fun TodayReportScreen(
                     )
                     onShowSnackbar("Corrective Maintenance ditambahkan!")
                 }
+                viewModel.resetCmScanState()
                 showAddCmDialog = false
                 editingCmItem = null
             }
@@ -602,8 +620,9 @@ fun TodayReportScreen(
 }
 
 /**
- * Dialog for Adding or Editing Corrective Maintenance.
- * CRITICAL UX IMPROVEMENT requested by user:
+ * Dialog for Adding or Editing Corrective Maintenance with AI Photo / Screenshot Detection.
+ * - Includes "Deteksi Foto / Screenshot CM by AI" so the user can pick a screenshot of a CM report
+ *   from their WhatsApp group (or a CM photo) and let AI automatically extract & fill all 7 fields!
  * - When adding a new CM (`editingCm == null`), all fields start EMPTY (`""`) and display
  *   example text as `placeholder` (background hint text) so the user never has to manually delete pre-filled text!
  * - If the user leaves a field blank and taps Save, it gracefully falls back to the standard template value.
@@ -611,7 +630,10 @@ fun TodayReportScreen(
  */
 @Composable
 private fun AddOrEditCorrectiveMaintenanceDialog(
+    viewModel: PmMainViewModel,
     editingCm: CorrectiveMaintenanceEntity?,
+    onShowSnackbar: (String) -> Unit,
+    onOpenApiConfig: () -> Unit,
     onDismiss: () -> Unit,
     onConfirm: (
         title: String,
@@ -623,6 +645,10 @@ private fun AddOrEditCorrectiveMaintenanceDialog(
         status: String
     ) -> Unit
 ) {
+    val context = LocalContext.current
+    val cmScanBitmap by viewModel.cmScanBitmap.collectAsStateWithLifecycle()
+    val cmScanState by viewModel.cmScanState.collectAsStateWithLifecycle()
+
     val defaultTitle = "Pembersihan & Pengujian Speed Access Point Wifi Publik"
     val defaultLocation = "Plaza Kedatangan Gate 1 Sebelah kanan, Terminal 3"
     val defaultEquipment = "Access Point Wifi Publik"
@@ -639,6 +665,29 @@ private fun AddOrEditCorrectiveMaintenanceDialog(
     var actions by remember(editingCm) { mutableStateOf(editingCm?.actionLines ?: "") }
     var status by remember(editingCm) { mutableStateOf(editingCm?.statusLines ?: "") }
 
+    val applyExtractedFields: (com.example.util.ExtractedCmFields) -> Unit = { extracted ->
+        if (extracted.activityTitle.isNotBlank()) title = extracted.activityTitle
+        if (extracted.location.isNotBlank()) location = extracted.location
+        if (extracted.equipmentName.isNotBlank()) equipment = extracted.equipmentName
+        if (extracted.kendala.isNotBlank()) kendala = extracted.kendala
+        if (extracted.issue.isNotBlank()) issue = extracted.issue
+        if (extracted.actionLines.isNotBlank()) actions = extracted.actionLines
+        if (extracted.statusLines.isNotBlank()) status = extracted.statusLines
+        onShowSnackbar("Isian CM berhasil dideteksi & diisi otomatis oleh AI!")
+    }
+
+    val cmPhotoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.onCmScreenshotSelected(
+                context = context,
+                uri = uri,
+                onExtracted = applyExtractedFields
+            )
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -654,6 +703,219 @@ private fun AddOrEditCorrectiveMaintenanceDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // AI Screenshot / Photo Auto-Fill Banner Card
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(30.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Deteksi Foto / Screenshot CM by AI",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "Upload screenshot laporan CM di Grup WA / foto kegiatan, AI otomatis mengisi 7 kolom di bawah.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 11.sp,
+                                    lineHeight = 14.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        if (cmScanBitmap != null) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .border(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Image(
+                                    bitmap = cmScanBitmap!!.asImageBitmap(),
+                                    contentDescription = "Screenshot CM",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(54.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .border(
+                                            1.dp,
+                                            MaterialTheme.colorScheme.outline,
+                                            RoundedCornerShape(6.dp)
+                                        )
+                                )
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    when (val state = cmScanState) {
+                                        is CmScanState.Scanning -> {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(14.dp),
+                                                    strokeWidth = 2.dp,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                Text(
+                                                    text = "AI sedang membaca isi screenshot CM...",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
+                                        is CmScanState.Success -> {
+                                            Text(
+                                                text = "✓ Terdeteksi otomatis (${state.providerLabel})",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = SuccessGreen,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "Silakan cek atau sesuaikan isian di bawah sebelum Simpan.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontSize = 10.5.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        is CmScanState.Error -> {
+                                            Text(
+                                                text = state.message,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.error,
+                                                maxLines = 3,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            if (state.suggestApiConfig) {
+                                                Text(
+                                                    text = "Atur API 9Router / Gemini →",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier
+                                                        .clickable { onOpenApiConfig() }
+                                                        .padding(vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                        is CmScanState.Idle -> {
+                                            Text(
+                                                text = "Foto siap dipindai AI.",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    cmPhotoPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                enabled = cmScanState !is CmScanState.Scanning,
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 42.dp)
+                                    .testTag("cm_ai_detect_photo_button")
+                            ) {
+                                Icon(
+                                    imageVector = if (cmScanBitmap == null) Icons.Default.AutoAwesome else Icons.Default.PhotoLibrary,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (cmScanBitmap == null) "Deteksi Foto by AI" else "Ganti Screenshot",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            if (cmScanBitmap != null) {
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.scanCmScreenshotBitmap(
+                                            bitmap = cmScanBitmap,
+                                            onExtracted = applyExtractedFields
+                                        )
+                                    },
+                                    enabled = cmScanState !is CmScanState.Scanning,
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                                    modifier = Modifier
+                                        .heightIn(min = 42.dp)
+                                        .testTag("cm_ai_rescan_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = "Scan Ulang AI",
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Ulang",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },

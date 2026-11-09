@@ -30,6 +30,16 @@ data class AiProviderConfig(
         }
 }
 
+data class ExtractedCmFields(
+    val activityTitle: String,
+    val location: String,
+    val equipmentName: String,
+    val kendala: String,
+    val issue: String,
+    val actionLines: String,
+    val statusLines: String
+)
+
 object CustomAiClient {
 
     private fun bitmapToBase64Jpeg(bitmap: Bitmap, maxDim: Int = 1024, quality: Int = 82): String {
@@ -144,6 +154,98 @@ object CustomAiClient {
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    /**
+     * Scans a Corrective Maintenance (CM) screenshot (e.g. WhatsApp group report screenshot or CM photo)
+     * and extracts all 7 CM fields in Indonesian.
+     */
+    suspend fun scanCmScreenshotImage(
+        config: AiProviderConfig,
+        bitmap: Bitmap
+    ): Result<ExtractedCmFields> = withContext(Dispatchers.IO) {
+        try {
+            val base64Img = bitmapToBase64Jpeg(bitmap, maxDim = 1280, quality = 85)
+            val promptText =
+                "Anda adalah Asisten Teknis ICT Operation & Corrective Maintenance (CM) WiFi Publik Bandara CGK. " +
+                    "Baca screenshot laporan Corrective Maintenance (CM) dari grup WhatsApp atau foto temuan ini, lalu ekstrak ke-7 bagian berikut ke dalam format JSON murni:\n" +
+                    "1. \"activityTitle\": Judul kegiatan CM (tanpa emoji 🛠️ di awal, contoh: \"Pembersihan & Pengujian Speed Access Point Wifi Publik\" atau sesuai teks di screenshot)\n" +
+                    "2. \"location\": Lokasi pengerjaan CM (contoh: \"Plaza Kedatangan Gate 1 Sebelah kanan, Terminal 3\")\n" +
+                    "3. \"equipmentName\": Nama peralatan (contoh: \"Access Point Wifi Publik\")\n" +
+                    "4. \"kendala\": Kendala atau temuan (contoh: \"Temuan AP Tampak Tidak Bersih\" atau sesuai isi screenshot)\n" +
+                    "5. \"issue\": Issue teknis (contoh: \"No Issue\" atau sesuai isi screenshot)\n" +
+                    "6. \"actionLines\": Daftar tindakan/action per baris diawali tanda '-' (pisahkan baris dengan \\n, contoh: \"-Team Melakukan Pembersihan\\n-Team Melakukan Pengujian Speedtest\")\n" +
+                    "7. \"statusLines\": Daftar status akhir per baris diawali tanda '-' (pisahkan baris dengan \\n, contoh: \"- AP Sudah Bersih✅\\n- AP Terpantau Normal ✅\\n- Speedtest Terpantau Normal✅\")\n" +
+                    "Balas HANYA dengan objek JSON valid dengan key: activityTitle, location, equipmentName, kendala, issue, actionLines, statusLines."
+
+            val rawResponse = if (config.providerType == "GEMINI_DIRECT") {
+                callGeminiDirectVision(
+                    apiKey = config.geminiDirectApiKey.trim(),
+                    model = config.geminiDirectModel.trim().ifEmpty { "gemini-2.5-flash" },
+                    prompt = promptText,
+                    base64Jpeg = base64Img,
+                    expectJson = true
+                )
+            } else {
+                callNineRouterVision(
+                    baseUrl = config.nineRouterBaseUrl,
+                    apiKey = config.nineRouterApiKey.trim(),
+                    model = config.nineRouterModel.trim().ifEmpty { "gemini/gemini-2.5-flash" },
+                    prompt = promptText,
+                    base64Jpeg = base64Img
+                )
+            }
+
+            Result.success(parseCmFieldsFromJson(rawResponse))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun parseCmFieldsFromJson(raw: String): ExtractedCmFields {
+        val cleaned = raw.trim()
+            .removePrefix("```json")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+        val jsonStart = cleaned.indexOf('{')
+        val jsonEnd = cleaned.lastIndexOf('}')
+        if (jsonStart < 0 || jsonEnd <= jsonStart) {
+            throw IllegalStateException("Respons AI tidak berformat JSON yang valid.")
+        }
+        val obj = JSONObject(cleaned.substring(jsonStart, jsonEnd + 1))
+
+        fun readLinesField(key: String): String {
+            val arr = obj.optJSONArray(key)
+            if (arr != null) {
+                val list = mutableListOf<String>()
+                for (i in 0 until arr.length()) {
+                    val line = arr.optString(i).trim()
+                    if (line.isNotEmpty()) list.add(line)
+                }
+                return list.joinToString("\n")
+            }
+            return obj.optString(key, "").trim()
+        }
+
+        val title = obj.optString("activityTitle", "").trim()
+            .removePrefix("🛠️").trim()
+        val location = obj.optString("location", "").trim()
+        val equipment = obj.optString("equipmentName", "").trim()
+        val kendala = obj.optString("kendala", "").trim()
+        val issue = obj.optString("issue", "").trim()
+        val actionLines = readLinesField("actionLines")
+        val statusLines = readLinesField("statusLines")
+
+        return ExtractedCmFields(
+            activityTitle = title.ifBlank { "Pembersihan & Pengujian Speed Access Point Wifi Publik" },
+            location = location,
+            equipmentName = equipment.ifBlank { "Access Point Wifi Publik" },
+            kendala = kendala.ifBlank { "Temuan AP Tampak Tidak Bersih" },
+            issue = issue.ifBlank { "No Issue" },
+            actionLines = actionLines.ifBlank { "-Team Melakukan Pembersihan\n-Team Melakukan Pengujian Speedtest" },
+            statusLines = statusLines.ifBlank { "- AP Sudah Bersih✅\n- AP Terpantau Normal ✅\n- Speedtest Terpantau Normal✅" }
+        )
     }
 
     /**

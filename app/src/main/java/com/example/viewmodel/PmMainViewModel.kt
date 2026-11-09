@@ -20,6 +20,7 @@ import com.example.util.AiProviderConfig
 import com.example.util.CollageGenerator
 import com.example.util.CollageResult
 import com.example.util.CustomAiClient
+import com.example.util.ExtractedCmFields
 import com.example.util.LiveSpeedtestResult
 import com.example.util.NasUploadClient
 import com.example.util.NasUploadResult
@@ -63,6 +64,13 @@ sealed interface SpeedtestScanState {
     data object Scanning : SpeedtestScanState
     data class Success(val downloadMbps: String, val uploadMbps: String, val providerLabel: String = "AI") : SpeedtestScanState
     data class Error(val message: String, val suggestApiConfig: Boolean = false) : SpeedtestScanState
+}
+
+sealed interface CmScanState {
+    data object Idle : CmScanState
+    data object Scanning : CmScanState
+    data class Success(val fields: ExtractedCmFields, val providerLabel: String = "AI") : CmScanState
+    data class Error(val message: String, val suggestApiConfig: Boolean = false) : CmScanState
 }
 
 data class BuiltInSpeedtestUiState(
@@ -276,6 +284,13 @@ class PmMainViewModel(
             "Bantu teknisi dalam menganalisis kualitas bandwidth/speedtest WiFi, menyusun laporan Corrective Maintenance (CM) dan Preventive Maintenance (PM), " +
             "serta memberikan solusi cepat kendala perangkat Access Point dengan bahasa Indonesia yang ringkas, jelas, dan profesional."
 
+    // Corrective Maintenance AI Screenshot Scan State
+    private val _cmScanBitmap = MutableStateFlow<Bitmap?>(null)
+    val cmScanBitmap: StateFlow<Bitmap?> = _cmScanBitmap.asStateFlow()
+
+    private val _cmScanState = MutableStateFlow<CmScanState>(CmScanState.Idle)
+    val cmScanState: StateFlow<CmScanState> = _cmScanState.asStateFlow()
+
     private val speedtestSchema = Schema.obj(
         properties = mapOf(
             "downloadMbps" to Schema.string(
@@ -293,6 +308,42 @@ class PmMainViewModel(
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
                 responseSchema = speedtestSchema
+            }
+        )
+    }
+
+    private val cmExtractorSchema = Schema.obj(
+        properties = mapOf(
+            "activityTitle" to Schema.string(
+                description = "Judul kegiatan Corrective Maintenance tanpa emoji 🛠️ di awal (contoh: 'Pembersihan & Pengujian Speed Access Point Wifi Publik')."
+            ),
+            "location" to Schema.string(
+                description = "Nama lokasi Corrective Maintenance yang tertera pada screenshot/foto (contoh: 'Plaza Kedatangan Gate 1 Sebelah kanan, Terminal 3')."
+            ),
+            "equipmentName" to Schema.string(
+                description = "Nama peralatan (contoh: 'Access Point Wifi Publik')."
+            ),
+            "kendala" to Schema.string(
+                description = "Kendala atau temuan yang tertera pada laporan CM (contoh: 'Temuan AP Tampak Tidak Bersih')."
+            ),
+            "issue" to Schema.string(
+                description = "Issue teknis pada laporan CM (contoh: 'No Issue' atau detail issue)."
+            ),
+            "actionLines" to Schema.string(
+                description = "Daftar tindakan/action per baris diawali '-' dipisahkan newline (contoh: '-Team Melakukan Pembersihan\\n-Team Melakukan Pengujian Speedtest')."
+            ),
+            "statusLines" to Schema.string(
+                description = "Daftar status akhir per baris diawali '-' dipisahkan newline (contoh: '- AP Sudah Bersih✅\\n- AP Terpantau Normal ✅\\n- Speedtest Terpantau Normal✅')."
+            )
+        )
+    )
+
+    private val cmExtractorModel by lazy {
+        Firebase.ai.generativeModel(
+            modelName = "gemini-3.8-flash",
+            generationConfig = generationConfig {
+                responseMimeType = "application/json"
+                responseSchema = cmExtractorSchema
             }
         )
     }
@@ -970,7 +1021,110 @@ class PmMainViewModel(
         }
     }
 
-    // --- Corrective Maintenance CRUD (Add, Edit & Delete) ---
+    // --- Corrective Maintenance CRUD (Add, Edit & Delete) + AI Screenshot Detection ---
+    fun resetCmScanState() {
+        _cmScanBitmap.value = null
+        _cmScanState.value = CmScanState.Idle
+    }
+
+    fun onCmScreenshotSelected(
+        context: Context,
+        uri: Uri,
+        onExtracted: (ExtractedCmFields) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val bmp = CollageGenerator.loadBitmapFromUri(context, uri, maxDimension = 1280)
+            if (bmp != null) {
+                _cmScanBitmap.value = bmp
+                scanCmScreenshotBitmap(bmp, onExtracted = onExtracted)
+            } else {
+                _cmScanState.value = CmScanState.Error("Gagal membaca gambar dari perangkat.")
+            }
+        }
+    }
+
+    fun scanCmScreenshotBitmap(
+        bitmap: Bitmap? = _cmScanBitmap.value,
+        onExtracted: (ExtractedCmFields) -> Unit = {}
+    ) {
+        if (bitmap == null) {
+            _cmScanState.value = CmScanState.Error("Pilih screenshot laporan CM terlebih dahulu.")
+            return
+        }
+        val activeConfig = aiProviderConfig.value
+
+        viewModelScope.launch {
+            _cmScanState.value = CmScanState.Scanning
+
+            if (activeConfig.hasCustomConfig) {
+                val providerLabel = if (activeConfig.providerType == "NINE_ROUTER") {
+                    "9Router (${activeConfig.nineRouterModel.substringAfterLast('/')})"
+                } else {
+                    "Gemini API"
+                }
+                val result = CustomAiClient.scanCmScreenshotImage(activeConfig, bitmap)
+                result.onSuccess { fields ->
+                    _cmScanState.value = CmScanState.Success(
+                        fields = fields,
+                        providerLabel = providerLabel
+                    )
+                    onExtracted(fields)
+                }.onFailure { err ->
+                    Log.e(TAG, "Custom AI CM screenshot scan failed", err)
+                    _cmScanState.value = CmScanState.Error(
+                        message = err.localizedMessage ?: "Gagal membaca screenshot CM lewat $providerLabel.",
+                        suggestApiConfig = true
+                    )
+                }
+                return@launch
+            }
+
+            try {
+                val response = withTimeout(45_000L) {
+                    cmExtractorModel.generateContent(
+                        content {
+                            image(bitmap)
+                            text(
+                                "Baca screenshot laporan Corrective Maintenance (CM) dari grup WhatsApp atau foto temuan ini, lalu ekstrak ke-7 bagian berikut ke JSON: " +
+                                    "activityTitle (judul kegiatan CM tanpa emoji 🛠️), location (lokasi), equipmentName (nama peralatan), " +
+                                    "kendala (kendala/temuan), issue (issue teknis), actionLines (tindakan per baris diawali '-'), dan statusLines (status per baris diawali '-')."
+                            )
+                        }
+                    )
+                }
+                val jsonText = response.text
+                if (jsonText.isNullOrBlank()) {
+                    _cmScanState.value = CmScanState.Error(
+                        message = "AI mengembalikan hasil kosong.",
+                        suggestApiConfig = true
+                    )
+                    return@launch
+                }
+
+                val extracted = CustomAiClient.parseCmFieldsFromJson(jsonText)
+                _cmScanState.value = CmScanState.Success(
+                    fields = extracted,
+                    providerLabel = "Firebase AI"
+                )
+                onExtracted(extracted)
+            } catch (e: TimeoutCancellationException) {
+                Log.e(TAG, "CM screenshot scan timed out", e)
+                _cmScanState.value = CmScanState.Error(
+                    message = "Waktu baca AI habis (45 detik). Anda juga dapat menghubungkan API 9Router lewat tombol 'Atur API'.",
+                    suggestApiConfig = true
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "CM screenshot scan failed", e)
+                _cmScanState.value = CmScanState.Error(
+                    message = "Perlu API 9Router / Gemini untuk deteksi di HP fisik: ${e.localizedMessage ?: "Gagal"}",
+                    suggestApiConfig = true
+                )
+            }
+        }
+    }
+
     fun addCorrectiveMaintenance(
         activityTitle: String,
         location: String,

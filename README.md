@@ -1,11 +1,14 @@
-# WiFi PM Helper v1.9.0 (CGK)
+# WiFi PM Helper v2.0.0 (CGK)
 
-## 📲 Download APK Terbaru (v1.9.0)
-- **Lewat Menu Releases**: Klik bagian [**Releases (`v1.9.0`)**](https://github.com/LtAkmal/Wifi-Pub/releases/tag/v1.9.0) di sebelah kanan halaman GitHub, lalu unduh **`WiFi-PM-Helper-v1.9.0.apk`**.
+## 📲 Download APK Terbaru (v2.0.0)
+- **Lewat Menu Releases**: Klik bagian [**Releases (`v2.0.0`)**](https://github.com/LtAkmal/Wifi-Pub/releases/tag/v2.0.0) di sebelah kanan halaman GitHub, lalu unduh **`WiFi-PM-Helper-v2.0.0.apk`**.
 
 ---
 
 ## Riwayat Pembaruan (Changelog)
+- **v2.0.0**:
+  - **Deteksi Foto / Screenshot Corrective Maintenance (CM) by AI**: Menambahkan tombol **"Deteksi Foto by AI"** di dalam dialog *Tambah / Edit Corrective Maintenance*. Cukup pilih screenshot laporan CM yang dikirim ke Grup WhatsApp atau foto kegiatan CM, maka AI otomatis mendeteksi dan mengisikan ke-7 kolom CM (`Judul Kegiatan 🛠️`, `Lokasi`, `Nama Peralatan`, `Kendala`, `Issue`, `Action per baris`, dan `Status per baris`).
+  - **Update Label Bandara CGK (T1–T3)**: Pembaruan label header aplikasi menjadi `CGK • <Tanggal>` untuk mencakup seluruh area Terminal 1–3 Bandara Soekarno-Hatta (CGK).
 - **v1.9.0**:
   - **Upload 4 foto PM terpisah ke NAS + riwayat di https://akmal-satrio-n.work.gd/pm/**: Mendukung pengiriman otomatis maupun manual 4 foto dokumentasi PM terpisah (`photo1..photo4` resolusi asli/JPEG quality 92 + `thumb1..thumb4` 480px quality 80) beserta metadata JSON lengkap ke server NAS, dilengkapi dialog **Pengaturan Upload NAS** (URL Server, Token Bearer, Tes Koneksi `/api/auth/check`, toggle Auto-Upload), chip status per laporan PM (`✓ NAS PM-XXXX`, `Mengunggah…`, `Gagal, ketuk untuk upload ulang`, `Upload ke NAS`), serta fitur *auto-retry* saat aplikasi dibuka.
 - **v1.8.0**:

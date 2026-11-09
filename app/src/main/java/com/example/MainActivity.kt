@@ -322,7 +322,8 @@ fun WifiPmHelperApp(
                     viewModel = viewModel,
                     onShowSnackbar = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } },
                     onNavigateToAddPm = { selectedTab = 0 },
-                    onOpenNasConfig = { showNasConfigDialog = true }
+                    onOpenNasConfig = { showNasConfigDialog = true },
+                    onOpenApiConfig = { showAiConfigDialog = true }
                 )
 
                 3 -> AiStudioAndChatScreen(
