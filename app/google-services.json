@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "271099804726",
+    "project_id": "gen-lang-client-0988471075",
+    "storage_bucket": "gen-lang-client-0988471075.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:271099804726:android:472253a8d46f7d0e206c97",
+        "android_client_info": {
+          "package_name": "com.aistudio.wifipmhelper.kxmpzq"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3yvFVSVam4Gfa8SB75UYXau813gdKUgs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

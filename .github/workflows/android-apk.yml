@@ -1,0 +1,33 @@
+name: Publish APK to GitHub Releases
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release with APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.9.0
+          name: "WiFi PM Helper v1.9.0 (Upload 4 Foto PM Terpisah ke NAS + Riwayat Publik)"
+          body: |
+            ### Download APK WiFi PM Helper v1.9.0 (CGK)
+            Klik file **`WiFi-PM-Helper-v1.9.0.apk`** di bawah bagian **Assets** untuk mengunduh dan menginstal versi terbaru.
+            
+            **Pembaruan v1.9.0:**
+            - **Upload 4 foto PM terpisah ke NAS + riwayat di https://akmal-satrio-n.work.gd/pm/**: Mengirim 4 foto slot terpisah (`photo1..photo4` + thumbnail `thumb1..thumb4`) beserta metadata JSON (`clientRef`, `date`, `time`, `shift`, `location`, `equipment`, `downloadMbps`, `uploadMbps`, `pingMs`, `status`, `cm`, `appVersion`) ke server NAS secara otomatis di background saat Simpan PM atau lewat tombol manual/retry.
+            - **Pengaturan Upload NAS & Tes Koneksi**: Dialog konfigurasi URL Server, Token Bearer (dengan tombol Paste & Show/Hide), tombol Tes Koneksi (`/api/auth/check`), dan toggle Auto-Upload.
+            - **Status Upload & Auto-Retry**: Menampilkan status chip pada setiap item PM (`✓ NAS PM-XXXX`, `Mengunggah…`, `Gagal, ketuk untuk upload ulang`, `Upload ke NAS`) dan mencoba ulang otomatis saat aplikasi dibuka.
+          files: release/WiFi-PM-Helper-v1.9.0.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

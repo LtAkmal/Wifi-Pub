@@ -1,0 +1,6 @@
+{
+  "name": "WiFi PM Helper",
+  "description": "Aplikasi asisten teknisi PM WiFi Publik untuk auto-deteksi Speedtest dengan AI, kolase 4 foto di bawah 1 MB, dan generator laporan harian.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
