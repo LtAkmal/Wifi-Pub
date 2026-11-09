@@ -284,9 +284,9 @@ class PmMainViewModel(
             "Bantu teknisi dalam menganalisis kualitas bandwidth/speedtest WiFi, menyusun laporan Corrective Maintenance (CM) dan Preventive Maintenance (PM), " +
             "serta memberikan solusi cepat kendala perangkat Access Point dengan bahasa Indonesia yang ringkas, jelas, dan profesional."
 
-    // Corrective Maintenance AI Screenshot Scan State
-    private val _cmScanBitmap = MutableStateFlow<Bitmap?>(null)
-    val cmScanBitmap: StateFlow<Bitmap?> = _cmScanBitmap.asStateFlow()
+    // Corrective Maintenance AI Screenshot Scan State (Supports up to 10 screenshots/photos)
+    private val _cmScanBitmaps = MutableStateFlow<List<Bitmap>>(emptyList())
+    val cmScanBitmaps: StateFlow<List<Bitmap>> = _cmScanBitmaps.asStateFlow()
 
     private val _cmScanState = MutableStateFlow<CmScanState>(CmScanState.Idle)
     val cmScanState: StateFlow<CmScanState> = _cmScanState.asStateFlow()
@@ -1021,34 +1021,58 @@ class PmMainViewModel(
         }
     }
 
-    // --- Corrective Maintenance CRUD (Add, Edit & Delete) + AI Screenshot Detection ---
+    // --- Corrective Maintenance CRUD (Add, Edit & Delete) + AI Screenshot Detection (Up to 10 Photos) ---
     fun resetCmScanState() {
-        _cmScanBitmap.value = null
+        _cmScanBitmaps.value = emptyList()
         _cmScanState.value = CmScanState.Idle
     }
 
-    fun onCmScreenshotSelected(
+    fun removeCmScanBitmapAt(index: Int) {
+        val current = _cmScanBitmaps.value.toMutableList()
+        if (index in current.indices) {
+            current.removeAt(index)
+            _cmScanBitmaps.value = current
+            if (current.isEmpty()) {
+                _cmScanState.value = CmScanState.Idle
+            }
+        }
+    }
+
+    fun onCmScreenshotsSelected(
         context: Context,
-        uri: Uri,
+        uris: List<Uri>,
+        append: Boolean = true,
         onExtracted: (ExtractedCmFields) -> Unit = {}
     ) {
+        if (uris.isEmpty()) return
         viewModelScope.launch {
-            val bmp = CollageGenerator.loadBitmapFromUri(context, uri, maxDimension = 1280)
-            if (bmp != null) {
-                _cmScanBitmap.value = bmp
-                scanCmScreenshotBitmap(bmp, onExtracted = onExtracted)
+            val existing = if (append) _cmScanBitmaps.value else emptyList()
+            val remainingSlots = (10 - existing.size).coerceAtLeast(0)
+            val targetUris = if (remainingSlots > 0) uris.take(remainingSlots) else uris.take(10)
+            val newlyLoaded = targetUris.mapNotNull { uri ->
+                CollageGenerator.loadBitmapFromUri(context, uri, maxDimension = 1280)
+            }
+            if (newlyLoaded.isNotEmpty()) {
+                val combined = if (append && existing.size < 10) {
+                    (existing + newlyLoaded).take(10)
+                } else {
+                    newlyLoaded.take(10)
+                }
+                _cmScanBitmaps.value = combined
+                scanCmScreenshotBitmaps(combined, onExtracted = onExtracted)
             } else {
                 _cmScanState.value = CmScanState.Error("Gagal membaca gambar dari perangkat.")
             }
         }
     }
 
-    fun scanCmScreenshotBitmap(
-        bitmap: Bitmap? = _cmScanBitmap.value,
+    fun scanCmScreenshotBitmaps(
+        bitmaps: List<Bitmap> = _cmScanBitmaps.value,
         onExtracted: (ExtractedCmFields) -> Unit = {}
     ) {
-        if (bitmap == null) {
-            _cmScanState.value = CmScanState.Error("Pilih screenshot laporan CM terlebih dahulu.")
+        val capped = bitmaps.take(10)
+        if (capped.isEmpty()) {
+            _cmScanState.value = CmScanState.Error("Pilih minimal 1 (maks 10) screenshot laporan CM terlebih dahulu.")
             return
         }
         val activeConfig = aiProviderConfig.value
@@ -1062,11 +1086,11 @@ class PmMainViewModel(
                 } else {
                     "Gemini API"
                 }
-                val result = CustomAiClient.scanCmScreenshotImage(activeConfig, bitmap)
+                val result = CustomAiClient.scanCmScreenshotImages(activeConfig, capped)
                 result.onSuccess { fields ->
                     _cmScanState.value = CmScanState.Success(
                         fields = fields,
-                        providerLabel = providerLabel
+                        providerLabel = "$providerLabel • ${capped.size} Foto"
                     )
                     onExtracted(fields)
                 }.onFailure { err ->
@@ -1080,12 +1104,14 @@ class PmMainViewModel(
             }
 
             try {
-                val response = withTimeout(45_000L) {
+                val response = withTimeout(60_000L) {
                     cmExtractorModel.generateContent(
                         content {
-                            image(bitmap)
+                            capped.forEach { bmp ->
+                                image(bmp)
+                            }
                             text(
-                                "Baca screenshot laporan Corrective Maintenance (CM) dari grup WhatsApp atau foto temuan ini, lalu ekstrak ke-7 bagian berikut ke JSON: " +
+                                "Baca dan gabungkan informasi dari ${capped.size} screenshot laporan Corrective Maintenance (CM) grup WhatsApp atau foto temuan ini, lalu ekstrak ke-7 bagian berikut ke JSON: " +
                                     "activityTitle (judul kegiatan CM tanpa emoji 🛠️), location (lokasi), equipmentName (nama peralatan), " +
                                     "kendala (kendala/temuan), issue (issue teknis), actionLines (tindakan per baris diawali '-'), dan statusLines (status per baris diawali '-')."
                             )
@@ -1104,13 +1130,13 @@ class PmMainViewModel(
                 val extracted = CustomAiClient.parseCmFieldsFromJson(jsonText)
                 _cmScanState.value = CmScanState.Success(
                     fields = extracted,
-                    providerLabel = "Firebase AI"
+                    providerLabel = "Firebase AI • ${capped.size} Foto"
                 )
                 onExtracted(extracted)
             } catch (e: TimeoutCancellationException) {
                 Log.e(TAG, "CM screenshot scan timed out", e)
                 _cmScanState.value = CmScanState.Error(
-                    message = "Waktu baca AI habis (45 detik). Anda juga dapat menghubungkan API 9Router lewat tombol 'Atur API'.",
+                    message = "Waktu baca AI habis (60 detik). Anda juga dapat menghubungkan API 9Router lewat tombol 'Atur API'.",
                     suggestApiConfig = true
                 )
             } catch (e: CancellationException) {

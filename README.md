@@ -1,11 +1,13 @@
-# WiFi PM Helper v2.0.0 (CGK)
+# WiFi PM Helper v2.1.0 (CGK)
 
-## 📲 Download APK Terbaru (v2.0.0)
-- **Lewat Menu Releases**: Klik bagian [**Releases (`v2.0.0`)**](https://github.com/LtAkmal/Wifi-Pub/releases/tag/v2.0.0) di sebelah kanan halaman GitHub, lalu unduh **`WiFi-PM-Helper-v2.0.0.apk`**.
+## 📲 Download APK Terbaru (v2.1.0)
+- **Lewat Menu Releases**: Klik bagian [**Releases (`v2.1.0`)**](https://github.com/LtAkmal/Wifi-Pub/releases/tag/v2.1.0) di sebelah kanan halaman GitHub, lalu unduh **`WiFi-PM-Helper-v2.1.0.apk`**.
 
 ---
 
 ## Riwayat Pembaruan (Changelog)
+- **v2.1.0**:
+  - **Upload s/d 10 Foto / Screenshot sekaligus untuk Deteksi Corrective Maintenance (CM) by AI**: Kini pada dialog *Tambah / Edit Corrective Maintenance*, Anda dapat memilih **1 hingga 10 foto/screenshot sekaligus** (misalnya tangkapan layar laporan CM panjang di Grup WhatsApp yang terbagi menjadi beberapa bagian + foto kegiatan/speedtest). Dilengkapi *preview thumbnail strip* `#1..#10`, tombol hapus per foto, tambah foto hingga 10, dan AI otomatis menggabungkan seluruh isi screenshot ke dalam 7 kolom CM.
 - **v2.0.0**:
   - **Deteksi Foto / Screenshot Corrective Maintenance (CM) by AI**: Menambahkan tombol **"Deteksi Foto by AI"** di dalam dialog *Tambah / Edit Corrective Maintenance*. Cukup pilih screenshot laporan CM yang dikirim ke Grup WhatsApp atau foto kegiatan CM, maka AI otomatis mendeteksi dan mengisikan ke-7 kolom CM (`Judul Kegiatan 🛠️`, `Lokasi`, `Nama Peralatan`, `Kendala`, `Issue`, `Action per baris`, dan `Status per baris`).
   - **Update Label Bandara CGK (T1–T3)**: Pembaruan label header aplikasi menjadi `CGK • <Tanggal>` untuk mencakup seluruh area Terminal 1–3 Bandara Soekarno-Hatta (CGK).

@@ -60,7 +60,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Refresh
@@ -646,7 +648,7 @@ private fun AddOrEditCorrectiveMaintenanceDialog(
     ) -> Unit
 ) {
     val context = LocalContext.current
-    val cmScanBitmap by viewModel.cmScanBitmap.collectAsStateWithLifecycle()
+    val cmScanBitmaps by viewModel.cmScanBitmaps.collectAsStateWithLifecycle()
     val cmScanState by viewModel.cmScanState.collectAsStateWithLifecycle()
 
     val defaultTitle = "Pembersihan & Pengujian Speed Access Point Wifi Publik"
@@ -676,13 +678,15 @@ private fun AddOrEditCorrectiveMaintenanceDialog(
         onShowSnackbar("Isian CM berhasil dideteksi & diisi otomatis oleh AI!")
     }
 
-    val cmPhotoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        if (uri != null) {
-            viewModel.onCmScreenshotSelected(
+    val cmMultiPhotoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            val shouldAppend = cmScanBitmaps.size in 1..9
+            viewModel.onCmScreenshotsSelected(
                 context = context,
-                uri = uri,
+                uris = uris,
+                append = shouldAppend,
                 onExtracted = applyExtractedFields
             )
         }
@@ -703,7 +707,7 @@ private fun AddOrEditCorrectiveMaintenanceDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // AI Screenshot / Photo Auto-Fill Banner Card
+                // AI Screenshot / Photo Auto-Fill Banner Card (Up to 10 Photos)
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
@@ -738,14 +742,32 @@ private fun AddOrEditCorrectiveMaintenanceDialog(
                                 )
                             }
                             Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Deteksi Screenshot CM by AI",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                                    ) {
+                                        Text(
+                                            text = "${cmScanBitmaps.size}/10 Foto",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
                                 Text(
-                                    text = "Deteksi Foto / Screenshot CM by AI",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = "Upload screenshot laporan CM di Grup WA / foto kegiatan, AI otomatis mengisi 7 kolom di bawah.",
+                                    text = "Upload 1 s/d 10 screenshot laporan CM di Grup WA / foto kegiatan sekaligus, AI otomatis mengisi 7 kolom di bawah.",
                                     style = MaterialTheme.typography.bodySmall,
                                     fontSize = 11.sp,
                                     lineHeight = 14.5.sp,
@@ -754,8 +776,8 @@ private fun AddOrEditCorrectiveMaintenanceDialog(
                             }
                         }
 
-                        if (cmScanBitmap != null) {
-                            Row(
+                        if (cmScanBitmaps.isNotEmpty()) {
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
@@ -766,87 +788,156 @@ private fun AddOrEditCorrectiveMaintenanceDialog(
                                         RoundedCornerShape(8.dp)
                                     )
                                     .padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Image(
-                                    bitmap = cmScanBitmap!!.asImageBitmap(),
-                                    contentDescription = "Screenshot CM",
-                                    contentScale = ContentScale.Crop,
+                                Row(
                                     modifier = Modifier
-                                        .size(54.dp)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .border(
-                                            1.dp,
-                                            MaterialTheme.colorScheme.outline,
-                                            RoundedCornerShape(6.dp)
-                                        )
-                                )
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    when (val state = cmScanState) {
-                                        is CmScanState.Scanning -> {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    cmScanBitmaps.forEachIndexed { idx, bmp ->
+                                        Box(
+                                            modifier = Modifier.size(60.dp)
+                                        ) {
+                                            Image(
+                                                bitmap = bmp.asImageBitmap(),
+                                                contentDescription = "Screenshot CM ${idx + 1}",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .clip(RoundedCornerShape(7.dp))
+                                                    .border(
+                                                        1.dp,
+                                                        MaterialTheme.colorScheme.outline,
+                                                        RoundedCornerShape(7.dp)
+                                                    )
+                                            )
+                                            // Number badge at bottom-left
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomStart)
+                                                    .padding(3.dp)
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(Color.Black.copy(alpha = 0.7f))
+                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
                                             ) {
-                                                CircularProgressIndicator(
-                                                    modifier = Modifier.size(14.dp),
-                                                    strokeWidth = 2.dp,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
                                                 Text(
-                                                    text = "AI sedang membaca isi screenshot CM...",
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    color = MaterialTheme.colorScheme.primary,
-                                                    fontWeight = FontWeight.SemiBold
-                                                )
-                                            }
-                                        }
-                                        is CmScanState.Success -> {
-                                            Text(
-                                                text = "✓ Terdeteksi otomatis (${state.providerLabel})",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = SuccessGreen,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Text(
-                                                text = "Silakan cek atau sesuaikan isian di bawah sebelum Simpan.",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontSize = 10.5.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        is CmScanState.Error -> {
-                                            Text(
-                                                text = state.message,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.error,
-                                                maxLines = 3,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            if (state.suggestApiConfig) {
-                                                Text(
-                                                    text = "Atur API 9Router / Gemini →",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.primary,
+                                                    text = "#${idx + 1}",
+                                                    fontSize = 9.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    modifier = Modifier
-                                                        .clickable { onOpenApiConfig() }
-                                                        .padding(vertical = 2.dp)
+                                                    color = Color.White
+                                                )
+                                            }
+                                            // Remove button at top-right
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.TopEnd)
+                                                    .padding(2.dp)
+                                                    .size(18.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color.Black.copy(alpha = 0.72f))
+                                                    .clickable(enabled = cmScanState !is CmScanState.Scanning) {
+                                                        viewModel.removeCmScanBitmapAt(idx)
+                                                    },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "Hapus foto ${idx + 1}",
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(11.dp)
                                                 )
                                             }
                                         }
-                                        is CmScanState.Idle -> {
-                                            Text(
-                                                text = "Foto siap dipindai AI.",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        when (val state = cmScanState) {
+                                            is CmScanState.Scanning -> {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(14.dp),
+                                                        strokeWidth = 2.dp,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                    Text(
+                                                        text = "AI sedang membaca ${cmScanBitmaps.size} screenshot CM...",
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                }
+                                            }
+                                            is CmScanState.Success -> {
+                                                Text(
+                                                    text = "✓ Terdeteksi otomatis (${state.providerLabel})",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = SuccessGreen,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = "Silakan cek atau sesuaikan isian di bawah sebelum Simpan.",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontSize = 10.5.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            is CmScanState.Error -> {
+                                                Text(
+                                                    text = state.message,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.error,
+                                                    maxLines = 3,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                if (state.suggestApiConfig) {
+                                                    Text(
+                                                        text = "Atur API 9Router / Gemini →",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier
+                                                            .clickable { onOpenApiConfig() }
+                                                            .padding(vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                            is CmScanState.Idle -> {
+                                                Text(
+                                                    text = "${cmScanBitmaps.size} foto siap dipindai AI.",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
                                         }
+                                    }
+
+                                    if (cmScanBitmaps.size > 1 && cmScanState !is CmScanState.Scanning) {
+                                        Text(
+                                            text = "Reset",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.error,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier
+                                                .padding(start = 8.dp)
+                                                .clickable { viewModel.resetCmScanState() }
+                                                .padding(4.dp)
+                                        )
                                     }
                                 }
                             }
@@ -858,7 +949,7 @@ private fun AddOrEditCorrectiveMaintenanceDialog(
                         ) {
                             Button(
                                 onClick = {
-                                    cmPhotoPickerLauncher.launch(
+                                    cmMultiPhotoPickerLauncher.launch(
                                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                     )
                                 },
@@ -871,13 +962,17 @@ private fun AddOrEditCorrectiveMaintenanceDialog(
                                     .testTag("cm_ai_detect_photo_button")
                             ) {
                                 Icon(
-                                    imageVector = if (cmScanBitmap == null) Icons.Default.AutoAwesome else Icons.Default.PhotoLibrary,
+                                    imageVector = if (cmScanBitmaps.isEmpty()) Icons.Default.AutoAwesome else Icons.Default.PhotoLibrary,
                                     contentDescription = null,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (cmScanBitmap == null) "Deteksi Foto by AI" else "Ganti Screenshot",
+                                    text = when {
+                                        cmScanBitmaps.isEmpty() -> "Deteksi Foto by AI (Maks 10)"
+                                        cmScanBitmaps.size < 10 -> "Tambah Foto (${cmScanBitmaps.size}/10)"
+                                        else -> "Ganti 10 Foto"
+                                    },
                                     style = MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
@@ -885,11 +980,11 @@ private fun AddOrEditCorrectiveMaintenanceDialog(
                                 )
                             }
 
-                            if (cmScanBitmap != null) {
+                            if (cmScanBitmaps.isNotEmpty()) {
                                 OutlinedButton(
                                     onClick = {
-                                        viewModel.scanCmScreenshotBitmap(
-                                            bitmap = cmScanBitmap,
+                                        viewModel.scanCmScreenshotBitmaps(
+                                            bitmaps = cmScanBitmaps,
                                             onExtracted = applyExtractedFields
                                         )
                                     },

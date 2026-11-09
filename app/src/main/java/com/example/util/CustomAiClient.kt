@@ -157,18 +157,26 @@ object CustomAiClient {
     }
 
     /**
-     * Scans a Corrective Maintenance (CM) screenshot (e.g. WhatsApp group report screenshot or CM photo)
-     * and extracts all 7 CM fields in Indonesian.
+     * Scans 1 to 10 Corrective Maintenance (CM) screenshots (e.g. WhatsApp group report screenshots or CM photos)
+     * and extracts all 7 CM fields in Indonesian by combining information across all uploaded images.
      */
-    suspend fun scanCmScreenshotImage(
+    suspend fun scanCmScreenshotImages(
         config: AiProviderConfig,
-        bitmap: Bitmap
+        bitmaps: List<Bitmap>
     ): Result<ExtractedCmFields> = withContext(Dispatchers.IO) {
         try {
-            val base64Img = bitmapToBase64Jpeg(bitmap, maxDim = 1280, quality = 85)
+            val capped = bitmaps.take(10)
+            if (capped.isEmpty()) {
+                return@withContext Result.failure(IllegalArgumentException("Tidak ada foto CM yang dipilih."))
+            }
+            val maxDim = if (capped.size > 3) 1024 else 1280
+            val quality = if (capped.size > 3) 80 else 85
+            val base64Imgs = capped.map { bmp ->
+                bitmapToBase64Jpeg(bmp, maxDim = maxDim, quality = quality)
+            }
             val promptText =
                 "Anda adalah Asisten Teknis ICT Operation & Corrective Maintenance (CM) WiFi Publik Bandara CGK. " +
-                    "Baca screenshot laporan Corrective Maintenance (CM) dari grup WhatsApp atau foto temuan ini, lalu ekstrak ke-7 bagian berikut ke dalam format JSON murni:\n" +
+                    "Baca dan gabungkan informasi dari ${base64Imgs.size} screenshot laporan Corrective Maintenance (CM) grup WhatsApp / foto temuan ini, lalu ekstrak ke-7 bagian berikut ke dalam format JSON murni:\n" +
                     "1. \"activityTitle\": Judul kegiatan CM (tanpa emoji 🛠️ di awal, contoh: \"Pembersihan & Pengujian Speed Access Point Wifi Publik\" atau sesuai teks di screenshot)\n" +
                     "2. \"location\": Lokasi pengerjaan CM (contoh: \"Plaza Kedatangan Gate 1 Sebelah kanan, Terminal 3\")\n" +
                     "3. \"equipmentName\": Nama peralatan (contoh: \"Access Point Wifi Publik\")\n" +
@@ -179,20 +187,20 @@ object CustomAiClient {
                     "Balas HANYA dengan objek JSON valid dengan key: activityTitle, location, equipmentName, kendala, issue, actionLines, statusLines."
 
             val rawResponse = if (config.providerType == "GEMINI_DIRECT") {
-                callGeminiDirectVision(
+                callGeminiDirectVisionMulti(
                     apiKey = config.geminiDirectApiKey.trim(),
                     model = config.geminiDirectModel.trim().ifEmpty { "gemini-2.5-flash" },
                     prompt = promptText,
-                    base64Jpeg = base64Img,
+                    base64Jpegs = base64Imgs,
                     expectJson = true
                 )
             } else {
-                callNineRouterVision(
+                callNineRouterVisionMulti(
                     baseUrl = config.nineRouterBaseUrl,
                     apiKey = config.nineRouterApiKey.trim(),
                     model = config.nineRouterModel.trim().ifEmpty { "gemini/gemini-2.5-flash" },
                     prompt = promptText,
-                    base64Jpeg = base64Img
+                    base64Jpegs = base64Imgs
                 )
             }
 
@@ -326,6 +334,20 @@ object CustomAiClient {
         model: String,
         prompt: String,
         base64Jpeg: String
+    ): String = callNineRouterVisionMulti(
+        baseUrl = baseUrl,
+        apiKey = apiKey,
+        model = model,
+        prompt = prompt,
+        base64Jpegs = listOf(base64Jpeg)
+    )
+
+    private fun callNineRouterVisionMulti(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        prompt: String,
+        base64Jpegs: List<String>
     ): String {
         val normalizedBase = normalizeNineRouterBaseUrl(baseUrl)
         val url = URL("$normalizedBase/chat/completions")
@@ -338,12 +360,14 @@ object CustomAiClient {
                     put("type", "text")
                     put("text", prompt)
                 })
-                put(JSONObject().apply {
-                    put("type", "image_url")
-                    put("image_url", JSONObject().apply {
-                        put("url", "data:image/jpeg;base64,$base64Jpeg")
+                base64Jpegs.forEach { b64 ->
+                    put(JSONObject().apply {
+                        put("type", "image_url")
+                        put("image_url", JSONObject().apply {
+                            put("url", "data:image/jpeg;base64,$b64")
+                        })
                     })
-                })
+                }
             }
             messages.put(JSONObject().apply {
                 put("role", "user")
@@ -411,17 +435,33 @@ object CustomAiClient {
         prompt: String,
         base64Jpeg: String,
         expectJson: Boolean
+    ): String = callGeminiDirectVisionMulti(
+        apiKey = apiKey,
+        model = model,
+        prompt = prompt,
+        base64Jpegs = listOf(base64Jpeg),
+        expectJson = expectJson
+    )
+
+    private fun callGeminiDirectVisionMulti(
+        apiKey: String,
+        model: String,
+        prompt: String,
+        base64Jpegs: List<String>,
+        expectJson: Boolean
     ): String {
         val cleanModel = model.removePrefix("models/").removePrefix("gemini/")
         val url = URL("https://generativelanguage.googleapis.com/v1beta/models/$cleanModel:generateContent?key=$apiKey")
         val parts = JSONArray().apply {
             put(JSONObject().apply { put("text", prompt) })
-            put(JSONObject().apply {
-                put("inline_data", JSONObject().apply {
-                    put("mime_type", "image/jpeg")
-                    put("data", base64Jpeg)
+            base64Jpegs.forEach { b64 ->
+                put(JSONObject().apply {
+                    put("inline_data", JSONObject().apply {
+                        put("mime_type", "image/jpeg")
+                        put("data", b64)
+                    })
                 })
-            })
+            }
         }
         val contents = JSONArray().apply {
             put(JSONObject().apply {
