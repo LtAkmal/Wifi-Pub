@@ -1,11 +1,12 @@
-# WiFi PM Helper v2.2.0 (CGK)
+# WiFi PM Helper v2.2.1 (CGK)
 
-## 📲 Download APK Terbaru (v2.2.0)
-- **Lewat Menu Releases**: Klik bagian [**Releases (`v2.2.0`)**](https://github.com/LtAkmal/Wifi-Pub/releases/tag/v2.2.0) di sebelah kanan halaman GitHub, lalu unduh **`WiFi-PM-Helper-v2.2.0.apk`**.
+## 📲 Download APK Terbaru (v2.2.1)
+- **Lewat Menu Releases**: Klik bagian [**Releases (`v2.2.1`)**](https://github.com/LtAkmal/Wifi-Pub/releases/tag/v2.2.1) di sebelah kanan halaman GitHub, lalu unduh **`WiFi-PM-Helper-v2.2.1.apk`**.
 
 ---
 
 ## Riwayat Pembaruan (Changelog)
+- **v2.2.1**: Perbaikan deteksi lokasi Foto 1: GPS foto galeri diambil dari EXIF (bukan posisi HP), saran lokasi tetap muncul walau lokasi sudah terisi manual, chip hasil lama dibersihkan saat Foto 1 diganti, dan cache thumbnail referensi diperbarui.
 - **v2.2.0**: Deteksi Lokasi Otomatis dari Foto 1 menggunakan AI + referensi lokasi di NAS + GPS untuk mempersempit kandidat.
 - **v2.1.1**:
   - **Perbaikan Tampilan Teks Kartu Deteksi Foto / Screenshot CM by AI (Maks 10 Foto)**: Merapikan tata letak judul dan deskripsi pada dialog *Tambah / Edit Corrective Maintenance* agar teks rapi dan proporsional tanpa badge yang terhimpit vertikal, tetap mendukung pemilihan 1 hingga 10 foto/screenshot sekaligus.

@@ -18,14 +18,15 @@ jobs:
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.2.0
-          name: "WiFi PM Helper v2.2.0 (Deteksi Lokasi Otomatis dari Foto 1 + Referensi NAS + GPS)"
+          tag_name: v2.2.1
+          name: "WiFi PM Helper v2.2.1 (Perbaikan Deteksi Lokasi Foto 1: EXIF GPS Galeri, Saran Lokasi, Cache & Batch Timeout)"
           body: |
-            ### Download APK WiFi PM Helper v2.2.0 (CGK)
-            Klik file **`WiFi-PM-Helper-v2.2.0.apk`** di bawah bagian **Assets** untuk mengunduh dan menginstal versi terbaru.
+            ### Download APK WiFi PM Helper v2.2.1 (CGK)
+            Klik file **`WiFi-PM-Helper-v2.2.1.apk`** di bawah bagian **Assets** untuk mengunduh dan menginstal versi terbaru.
             
-            **Pembaruan v2.2.0:**
+            **Pembaruan v2.2.1:**
+            - **v2.2.1**: Perbaikan deteksi lokasi Foto 1: GPS foto galeri diambil dari EXIF (bukan posisi HP), saran lokasi tetap muncul walau lokasi sudah terisi manual, chip hasil lama dibersihkan saat Foto 1 diganti, dan cache thumbnail referensi diperbarui.
             - **v2.2.0**: Deteksi Lokasi Otomatis dari Foto 1 menggunakan AI + referensi lokasi di NAS + GPS untuk mempersempit kandidat.
-          files: release/WiFi-PM-Helper-v2.2.0.apk
+          files: release/WiFi-PM-Helper-v2.2.1.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

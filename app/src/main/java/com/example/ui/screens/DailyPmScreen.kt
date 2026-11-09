@@ -102,7 +102,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.text.style.TextAlign
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.SpaceGroteskFontFamily
@@ -143,6 +143,7 @@ fun DailyPmScreen(
     val collageSlots by viewModel.collageSlots.collectAsStateWithLifecycle()
     val nasConfig by viewModel.nasUploadConfig.collectAsStateWithLifecycle()
     val locationDetectState by viewModel.locationDetectState.collectAsStateWithLifecycle()
+    val askedLocationPermForPhoto1 by viewModel.askedLocationPermForPhoto1.collectAsStateWithLifecycle()
 
     var showLocationSheet by remember { mutableStateOf(false) }
     var showPreviewText by remember { mutableStateOf(true) }
@@ -150,7 +151,12 @@ fun DailyPmScreen(
     var showBuiltInSpeedtest by remember { mutableStateOf(false) }
     var showBuiltInWifiAnalyzer by remember { mutableStateOf(false) }
     var showLocationComparisonDialog by remember { mutableStateOf(false) }
-    var askedLocationPermForPhoto1 by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(locationDetectState) {
+        if (locationDetectState !is LocationDetectUiState.MatchedHigh) {
+            showLocationComparisonDialog = false
+        }
+    }
 
     // Direct In-App Camera Capture state for Foto 1 (slot 0) and Foto 2 (slot 1)
     var pendingCameraSlot by remember { mutableIntStateOf(0) }
@@ -189,7 +195,7 @@ fun DailyPmScreen(
     ) { granted ->
         if (granted) {
             if (pendingCameraSlot == 0 && !NasLocationMatcher.hasLocationPermission(context) && !askedLocationPermForPhoto1) {
-                askedLocationPermForPhoto1 = true
+                viewModel.markAskedLocationPermForPhoto1()
                 photo1LocationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
             } else {
                 startCameraIntentForPendingSlot()
@@ -207,7 +213,7 @@ fun DailyPmScreen(
         ) == PackageManager.PERMISSION_GRANTED
         if (hasPerm) {
             if (slotIndex == 0 && !NasLocationMatcher.hasLocationPermission(context) && !askedLocationPermForPhoto1) {
-                askedLocationPermForPhoto1 = true
+                viewModel.markAskedLocationPermForPhoto1()
                 photo1LocationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
             } else {
                 startCameraIntentForPendingSlot()
@@ -737,6 +743,7 @@ fun DailyPmScreen(
                     state = locationDetectState,
                     onClickMatchedChip = { showLocationComparisonDialog = true },
                     onCancelAutoDetected = { viewModel.cancelAutoDetectedLocation(context) },
+                    onSkipDetecting = { viewModel.skipPhoto1LocationDetection() },
                     onApplySuggested = { suggested ->
                         viewModel.applySuggestedLocation(context, suggested)
                     }
@@ -1480,6 +1487,7 @@ private fun LocationDetectStatusSection(
     state: LocationDetectUiState,
     onClickMatchedChip: () -> Unit,
     onCancelAutoDetected: () -> Unit,
+    onSkipDetecting: () -> Unit,
     onApplySuggested: (LocationDetectUiState.SuggestedMedium) -> Unit
 ) {
     when (state) {
@@ -1488,23 +1496,54 @@ private fun LocationDetectStatusSection(
         is LocationDetectUiState.Detecting -> {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 4.dp, vertical = 2.dp)
                     .testTag("location_detect_loading_row")
             ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(14.dp),
-                    strokeWidth = 2.dp
-                )
-                Text(
-                    text = "Mendeteksi lokasi dari Foto 1…",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Text(
+                        text = "Mendeteksi lokasi dari Foto 1… (${state.currentBatch}/${state.totalBatches})",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onSkipDetecting() }
+                        .testTag("skip_location_detect_button")
+                ) {
+                    Text(
+                        text = "Lewati",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
             }
         }
 
@@ -1599,6 +1638,11 @@ private fun LocationDetectStatusSection(
         }
 
         is LocationDetectUiState.SuggestedMedium -> {
+            val suggestionLabel = if (state.fromPhoto1OnManualLocation) {
+                "Foto 1 mirip: ${state.location}? (${state.confidencePercent}% · ${state.refId})"
+            } else {
+                "Mirip: ${state.location}? (${state.confidencePercent}% · ${state.refId})"
+            }
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
@@ -1619,7 +1663,7 @@ private fun LocationDetectStatusSection(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Mirip: ${state.location}? (${state.confidencePercent}% · ${state.refId})",
+                        text = suggestionLabel,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Medium,
@@ -1649,6 +1693,20 @@ private fun LocationDetectStatusSection(
                     }
                 }
             }
+        }
+
+        is LocationDetectUiState.Confirmed -> {
+            Text(
+                text = "✓ Lokasi cocok dengan ${state.refId}",
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = SuccessGreen,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp)
+                    .testTag("location_detect_confirmed_text")
+            )
         }
 
         is LocationDetectUiState.Skipped -> {

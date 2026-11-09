@@ -7,9 +7,11 @@ import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -353,7 +355,7 @@ object CustomAiClient {
                 val finalPrompt = buildApLocationMatchPrompt(indexedCandidates.size)
                 val allImagesB64 = listOf(newPhotoB64) + validPairs.map { it.second }
 
-                val rawResponse = withTimeout(60_000L) {
+                val rawResponse = withTimeoutOrNull(60_000L) {
                     if (config.providerType == "GEMINI_DIRECT") {
                         callGeminiDirectVisionMulti(
                             apiKey = config.geminiDirectApiKey.trim(),
@@ -371,7 +373,7 @@ object CustomAiClient {
                             base64Jpegs = allImagesB64
                         )
                     }
-                }
+                } ?: return@withContext Result.failure(IllegalStateException("Waktu baca AI habis (60 detik)"))
                 val parsed = parseLocationMatchFromJson(rawResponse, indexedCandidates)
                 return@withContext Result.success(parsed)
             }
@@ -401,7 +403,7 @@ object CustomAiClient {
                         responseMimeType = "application/json"
                     }
                 )
-                val response = withTimeout(60_000L) {
+                val response = withTimeoutOrNull(60_000L) {
                     model.generateContent(
                         content {
                             image(newPhotoScaled)
@@ -411,10 +413,10 @@ object CustomAiClient {
                             text(finalPrompt)
                         }
                     )
-                }
+                } ?: return@withContext Result.failure(IllegalStateException("Waktu baca AI habis (60 detik)"))
                 val rawText = response.text.orEmpty()
                 if (rawText.isBlank()) {
-                    return@withContext Result.failure(IllegalStateException("AI belum diatur"))
+                    return@withContext Result.failure(IllegalStateException("AI tidak memberi jawaban"))
                 }
                 val parsed = parseLocationMatchFromJson(rawText, indexedCandidates)
                 return@withContext Result.success(parsed)
@@ -426,6 +428,8 @@ object CustomAiClient {
                     if (!bmp.isRecycled) bmp.recycle()
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }

@@ -8,6 +8,8 @@ import android.graphics.BitmapFactory
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.media.ExifInterface
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.CancellationSignal
@@ -25,6 +27,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -118,6 +121,38 @@ object NasLocationMatcher {
             lon = chosen.longitude,
             accuracyM = if (chosen.hasAccuracy()) chosen.accuracy else null
         )
+    }
+
+    /**
+     * Reads GPS coordinates from the original gallery image's EXIF metadata if present.
+     * Never calls LocationManager (which would record the phone's current location instead of where the photo was taken).
+     */
+    @Suppress("DEPRECATION")
+    suspend fun extractGpsFromExifUri(
+        context: Context,
+        uri: Uri?
+    ): GpsFix? = withContext(Dispatchers.IO) {
+        if (uri == null) return@withContext null
+        try {
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                val exif = ExifInterface(inputStream)
+                val latLong = FloatArray(2)
+                if (exif.getLatLong(latLong)) {
+                    val lat = latLong[0].toDouble()
+                    val lon = latLong[1].toDouble()
+                    val isValidRange = !lat.isNaN() && !lon.isNaN() &&
+                        lat in -90.0..90.0 &&
+                        lon in -180.0..180.0 &&
+                        !(abs(lat) < 1e-6 && abs(lon) < 1e-6)
+                    if (isValidRange) {
+                        return@withContext GpsFix(lat = lat, lon = lon, accuracyM = null)
+                    }
+                }
+            }
+            null
+        } catch (_: Exception) {
+            null
+        }
     }
 
     @Suppress("MissingPermission")
@@ -311,6 +346,7 @@ object NasLocationMatcher {
                             cacheFile.writeText(wrapper.toString())
                         } catch (_: Exception) {
                         }
+                        pruneRefThumbnailCache(context, parsed)
                         return@withContext Result.success(parsed)
                     }
                     401 -> {
@@ -387,6 +423,35 @@ object NasLocationMatcher {
             }
         }
         return result
+    }
+
+    /**
+     * Cleans up `cacheDir/loc_refs/` whenever `/api/locations` returns HTTP 200:
+     * - Deletes files whose ID is no longer in the latest locations list.
+     * - Deletes files whose `lastModified` is older than 7 days so updated thumbnails are re-downloaded.
+     */
+    private fun pruneRefThumbnailCache(context: Context, entries: List<NasLocationEntry>) {
+        try {
+            val dir = File(context.cacheDir, "loc_refs")
+            if (!dir.exists()) return
+            val validSafeIds = entries
+                .asSequence()
+                .flatMap { it.refs.asSequence() }
+                .map { it.id.replace(Regex("[^a-zA-Z0-9_-]"), "_") }
+                .toSet()
+            val sevenDaysMs = 7L * 24L * 60L * 60L * 1000L
+            val now = System.currentTimeMillis()
+            dir.listFiles()?.forEach { file ->
+                if (!file.isFile) return@forEach
+                val idPart = file.nameWithoutExtension
+                val isRemovedId = idPart !in validSafeIds
+                val isOlderThan7Days = (now - file.lastModified()) > sevenDaysMs
+                if (isRemovedId || isOlderThan7Days) {
+                    file.delete()
+                }
+            }
+        } catch (_: Exception) {
+        }
     }
 
     /**

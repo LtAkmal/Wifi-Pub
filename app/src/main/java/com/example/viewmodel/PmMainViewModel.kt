@@ -60,6 +60,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.io.File
 import java.util.Locale
@@ -67,6 +68,11 @@ import java.util.UUID
 import kotlin.math.roundToInt
 
 private const val TAG = "PmMainViewModel"
+
+enum class Photo1Source {
+    CAMERA,
+    GALLERY
+}
 
 sealed interface SpeedtestScanState {
     data object Idle : SpeedtestScanState
@@ -84,7 +90,10 @@ sealed interface CmScanState {
 
 sealed interface LocationDetectUiState {
     data object Idle : LocationDetectUiState
-    data object Detecting : LocationDetectUiState
+    data class Detecting(
+        val currentBatch: Int = 1,
+        val totalBatches: Int = 1
+    ) : LocationDetectUiState
     data class MatchedHigh(
         val location: String,
         val confidencePercent: Int,
@@ -97,7 +106,12 @@ sealed interface LocationDetectUiState {
         val confidencePercent: Int,
         val refId: String,
         val reason: String,
-        val refThumbFile: File
+        val refThumbFile: File,
+        val fromPhoto1OnManualLocation: Boolean = false
+    ) : LocationDetectUiState
+    data class Confirmed(
+        val refId: String,
+        val confidencePercent: Int
     ) : LocationDetectUiState
     data class Skipped(val message: String) : LocationDetectUiState
 }
@@ -174,7 +188,11 @@ class PmMainViewModel(
     private val _currentPhoto1GpsFix = MutableStateFlow<GpsFix?>(null)
     val currentPhoto1GpsFix: StateFlow<GpsFix?> = _currentPhoto1GpsFix.asStateFlow()
 
+    private val _askedLocationPermForPhoto1 = MutableStateFlow(false)
+    val askedLocationPermForPhoto1: StateFlow<Boolean> = _askedLocationPermForPhoto1.asStateFlow()
+
     private var locationDetectJob: Job? = null
+    private var photo1GpsJob: Job? = null
 
     private val _equipmentNameInput = MutableStateFlow("Access Point Wifi Publik")
     val equipmentNameInput: StateFlow<String> = _equipmentNameInput.asStateFlow()
@@ -424,10 +442,16 @@ class PmMainViewModel(
     }
 
     // --- Form Setters ---
+    fun markAskedLocationPermForPhoto1() {
+        _askedLocationPermForPhoto1.value = true
+    }
+
     fun updateLocation(value: String) {
         _locationInput.value = value
         _locationAutoFilled.value = false
-        if (_locationDetectState.value is LocationDetectUiState.MatchedHigh) {
+        if (_locationDetectState.value is LocationDetectUiState.MatchedHigh ||
+            _locationDetectState.value is LocationDetectUiState.Confirmed
+        ) {
             _locationDetectState.value = LocationDetectUiState.Idle
         }
     }
@@ -455,6 +479,11 @@ class PmMainViewModel(
         if (_collageSlots.value.any { it != null }) {
             generateCollage(context, debounceMs = 100L)
         }
+    }
+
+    fun skipPhoto1LocationDetection() {
+        locationDetectJob?.cancel()
+        _locationDetectState.value = LocationDetectUiState.Idle
     }
 
     fun saveLocationIfNotBlank(location: String = _locationInput.value) {
@@ -691,7 +720,13 @@ class PmMainViewModel(
             val bmp = CollageGenerator.loadBitmapFromUri(context, uri, maxDimension = 1280)
             if (bmp != null) {
                 val targetSlot = slotIndex.coerceIn(0, 3)
-                setCollageSlotBitmap(context, targetSlot, bmp, originalUri = uri)
+                setCollageSlotBitmap(
+                    context = context,
+                    slotIndex = targetSlot,
+                    bitmap = bmp,
+                    originalUri = uri,
+                    photo1Source = Photo1Source.CAMERA
+                )
                 onLoaded(targetSlot)
             }
         }
@@ -701,7 +736,8 @@ class PmMainViewModel(
         context: Context,
         slotIndex: Int,
         bitmap: Bitmap?,
-        originalUri: Uri? = null
+        originalUri: Uri? = null,
+        photo1Source: Photo1Source = Photo1Source.CAMERA
     ) {
         val updated = _collageSlots.value.toMutableList()
         val updatedUris = _slotOriginalUris.value.toMutableList()
@@ -712,7 +748,12 @@ class PmMainViewModel(
             _slotOriginalUris.value = updatedUris
             if (slotIndex == 0) {
                 if (bitmap != null) {
-                    onPhoto1CapturedOrReplaced(context, bitmap)
+                    onPhoto1CapturedOrReplaced(
+                        context = context,
+                        photo1Bitmap = bitmap,
+                        source = photo1Source,
+                        originalUri = originalUri
+                    )
                 } else {
                     onPhoto1Removed()
                 }
@@ -727,6 +768,7 @@ class PmMainViewModel(
 
     private fun onPhoto1Removed() {
         locationDetectJob?.cancel()
+        photo1GpsJob?.cancel()
         _currentPhoto1GpsFix.value = null
         _locationDetectState.value = LocationDetectUiState.Idle
         if (_locationAutoFilled.value) {
@@ -750,51 +792,82 @@ class PmMainViewModel(
         }
     }
 
-    private fun onPhoto1CapturedOrReplaced(context: Context, photo1Bitmap: Bitmap) {
+    private suspend fun resolvePhoto1GpsFix(
+        appContext: Context,
+        source: Photo1Source,
+        originalUri: Uri?
+    ): GpsFix? {
+        return when (source) {
+            Photo1Source.CAMERA -> NasLocationMatcher.captureSingleGpsFix(appContext, timeoutMs = 4_000L)
+            Photo1Source.GALLERY -> NasLocationMatcher.extractGpsFromExifUri(appContext, originalUri)
+        }
+    }
+
+    private fun onPhoto1CapturedOrReplaced(
+        context: Context,
+        photo1Bitmap: Bitmap,
+        source: Photo1Source,
+        originalUri: Uri?
+    ) {
         val appContext = context.applicationContext
         locationDetectJob?.cancel()
+        photo1GpsJob?.cancel()
+
+        // Always reset previous photo's GPS and old detection chip immediately
+        _currentPhoto1GpsFix.value = null
+        _locationDetectState.value = LocationDetectUiState.Idle
+
+        val gpsDeferred = viewModelScope.async(Dispatchers.IO) {
+            val fix = resolvePhoto1GpsFix(appContext, source, originalUri)
+            _currentPhoto1GpsFix.value = fix
+            fix
+        }
+        photo1GpsJob = gpsDeferred
 
         locationDetectJob = viewModelScope.launch(Dispatchers.IO) {
-            // Capture a single GPS fix for Foto 1 in parallel (4s timeout)
-            val canOverwriteLocation = _locationInput.value.isBlank() || _locationAutoFilled.value
-            if (!canOverwriteLocation) {
-                // User already typed/selected a location manually — never overwrite it; just record GPS silently
-                _currentPhoto1GpsFix.value = NasLocationMatcher.captureSingleGpsFix(appContext, timeoutMs = 4_000L)
-                return@launch
-            }
+            val initialSuggestOnly = _locationInput.value.isNotBlank() && !_locationAutoFilled.value
 
             val nasConfig = repository.nasUploadConfigFlow.first()
             if (!nasConfig.autoDetectLocationFromPhoto1) {
-                _locationDetectState.value = LocationDetectUiState.Skipped("Deteksi lokasi nonaktif")
-                _currentPhoto1GpsFix.value = NasLocationMatcher.captureSingleGpsFix(appContext, timeoutMs = 4_000L)
+                if (!initialSuggestOnly) {
+                    _locationDetectState.value = LocationDetectUiState.Skipped("Deteksi lokasi nonaktif")
+                } else {
+                    _locationDetectState.value = LocationDetectUiState.Idle
+                }
                 return@launch
             }
             if (nasConfig.serverUrl.isBlank() || nasConfig.token.isBlank()) {
-                _locationDetectState.value = LocationDetectUiState.Skipped("Token NAS belum diisi")
-                _currentPhoto1GpsFix.value = NasLocationMatcher.captureSingleGpsFix(appContext, timeoutMs = 4_000L)
+                if (!initialSuggestOnly) {
+                    _locationDetectState.value = LocationDetectUiState.Skipped("Token NAS belum diisi")
+                } else {
+                    _locationDetectState.value = LocationDetectUiState.Idle
+                }
                 return@launch
             }
 
             val aiConfig = repository.aiProviderConfigFlow.first()
             val isAiConfigured = aiConfig.hasCustomConfig || aiConfig.providerType == "FIREBASE"
             if (!isAiConfigured) {
-                _locationDetectState.value = LocationDetectUiState.Skipped("AI belum diatur")
-                _currentPhoto1GpsFix.value = NasLocationMatcher.captureSingleGpsFix(appContext, timeoutMs = 4_000L)
+                if (!initialSuggestOnly) {
+                    _locationDetectState.value = LocationDetectUiState.Skipped("AI belum diatur")
+                } else {
+                    _locationDetectState.value = LocationDetectUiState.Idle
+                }
                 return@launch
             }
 
             if (!NasUploadClient.isNetworkAvailable(appContext)) {
-                _locationDetectState.value = LocationDetectUiState.Skipped("Offline, deteksi dilewati")
-                _currentPhoto1GpsFix.value = NasLocationMatcher.captureSingleGpsFix(appContext, timeoutMs = 4_000L)
+                if (!initialSuggestOnly) {
+                    _locationDetectState.value = LocationDetectUiState.Skipped("Offline, deteksi dilewati")
+                } else {
+                    _locationDetectState.value = LocationDetectUiState.Idle
+                }
                 return@launch
             }
 
-            _locationDetectState.value = LocationDetectUiState.Detecting
+            _locationDetectState.value = LocationDetectUiState.Detecting(currentBatch = 1, totalBatches = 1)
 
             val (gpsFix, refsResult) = coroutineScope {
-                val gpsDeferred = async {
-                    NasLocationMatcher.captureSingleGpsFix(appContext, timeoutMs = 4_000L)
-                }
                 val refsDeferred = async {
                     NasLocationMatcher.getOrFetchLocationRefs(
                         context = appContext,
@@ -805,17 +878,27 @@ class PmMainViewModel(
                 }
                 gpsDeferred.await() to refsDeferred.await()
             }
-            _currentPhoto1GpsFix.value = gpsFix
+
+            val isSuggestOnlyAfterFetch = initialSuggestOnly ||
+                (_locationInput.value.isNotBlank() && !_locationAutoFilled.value)
 
             val allEntries = refsResult.getOrElse { err ->
-                _locationDetectState.value = LocationDetectUiState.Skipped(
-                    err.message ?: "Gagal memuat lokasi referensi NAS"
-                )
+                if (!isSuggestOnlyAfterFetch) {
+                    _locationDetectState.value = LocationDetectUiState.Skipped(
+                        err.message ?: "Gagal memuat lokasi referensi NAS"
+                    )
+                } else {
+                    _locationDetectState.value = LocationDetectUiState.Idle
+                }
                 return@launch
             }
 
             if (allEntries.isEmpty()) {
-                _locationDetectState.value = LocationDetectUiState.Skipped("Belum ada lokasi referensi di NAS")
+                if (!isSuggestOnlyAfterFetch) {
+                    _locationDetectState.value = LocationDetectUiState.Skipped("Belum ada lokasi referensi di NAS")
+                } else {
+                    _locationDetectState.value = LocationDetectUiState.Idle
+                }
                 return@launch
             }
 
@@ -823,6 +906,16 @@ class PmMainViewModel(
                 entries = allEntries,
                 newGps = gpsFix
             )
+
+            val plannedBatches = if (nearbyEntries.isNotEmpty()) {
+                val nearbySet = nearbyEntries.map { it.location }.toSet()
+                val remCount = allByDateEntries.count { it.location !in nearbySet }
+                val nearbyBatchCount = (nearbyEntries.size + 19) / 20
+                val remBatchCount = (remCount + 19) / 20
+                (nearbyBatchCount + remBatchCount).coerceIn(1, 5)
+            } else {
+                ((allByDateEntries.size + 19) / 20).coerceIn(1, 5)
+            }
 
             var totalBatchesRun = 0
             var bestOverallMatch: LocationMatch? = null
@@ -832,6 +925,12 @@ class PmMainViewModel(
                 val chunks = entriesToTest.chunked(20)
                 for (chunk in chunks) {
                     if (totalBatchesRun >= 5) break
+                    val nextBatchNumber = (totalBatchesRun + 1).coerceAtMost(plannedBatches)
+                    _locationDetectState.value = LocationDetectUiState.Detecting(
+                        currentBatch = nextBatchNumber,
+                        totalBatches = plannedBatches
+                    )
+
                     // Build 1 candidate per location (refs[0], fallback refs[1])
                     val candidates = mutableListOf<LocationCandidateInput>()
                     for (entry in chunk) {
@@ -885,28 +984,59 @@ class PmMainViewModel(
                 }
             }
 
-            if (nearbyEntries.isNotEmpty()) {
-                runBatchesOn(nearbyEntries)
-                val nearbyBest = bestOverallMatch
-                if ((nearbyBest == null || nearbyBest.confidence < 0.80) && totalBatchesRun < 5) {
-                    val testedLocations = nearbyEntries.map { it.location }.toSet()
-                    val remainingByDate = allByDateEntries.filter { it.location !in testedLocations }
-                    if (remainingByDate.isNotEmpty()) {
-                        runBatchesOn(remainingByDate)
+            // Cap total detection loop at 90 seconds
+            val completedWithin90s = withTimeoutOrNull(90_000L) {
+                if (nearbyEntries.isNotEmpty()) {
+                    runBatchesOn(nearbyEntries)
+                    val nearbyBest = bestOverallMatch
+                    if ((nearbyBest == null || nearbyBest.confidence < 0.80) && totalBatchesRun < 5) {
+                        val testedLocations = nearbyEntries.map { it.location }.toSet()
+                        val remainingByDate = allByDateEntries.filter { it.location !in testedLocations }
+                        if (remainingByDate.isNotEmpty()) {
+                            runBatchesOn(remainingByDate)
+                        }
                     }
+                } else {
+                    runBatchesOn(allByDateEntries)
                 }
-            } else {
-                runBatchesOn(allByDateEntries)
-            }
+                true
+            } != null
+            val timedOut = !completedWithin90s
 
-            // Re-verify that user did not type a manual location while AI was running
-            if (_locationInput.value.isNotBlank() && !_locationAutoFilled.value) {
-                _locationDetectState.value = LocationDetectUiState.Idle
-                return@launch
-            }
+            val currentLocationText = _locationInput.value.trim()
+            val isSuggestOnlyFinal = initialSuggestOnly ||
+                (currentLocationText.isNotEmpty() && !_locationAutoFilled.value)
 
             val finalMatch = bestOverallMatch
             val matchedCand = finalMatch?.matchedCandidate
+
+            if (isSuggestOnlyFinal) {
+                // suggestOnly mode: NEVER overwrite manual location field
+                if (finalMatch != null && finalMatch.match > 0 && matchedCand != null && finalMatch.confidence >= 0.55) {
+                    val pct = (finalMatch.confidence * 100.0).roundToInt().coerceIn(55, 100)
+                    val isSameLocation = matchedCand.location.trim().equals(currentLocationText, ignoreCase = true)
+                    if (isSameLocation) {
+                        _locationDetectState.value = LocationDetectUiState.Confirmed(
+                            refId = matchedCand.refId,
+                            confidencePercent = pct
+                        )
+                    } else {
+                        _locationDetectState.value = LocationDetectUiState.SuggestedMedium(
+                            location = matchedCand.location,
+                            confidencePercent = pct,
+                            refId = matchedCand.refId,
+                            reason = finalMatch.reason.ifBlank { "Kemiripan terdeteksi dari Foto 1." },
+                            refThumbFile = matchedCand.thumbFile,
+                            fromPhoto1OnManualLocation = true
+                        )
+                    }
+                } else {
+                    _locationDetectState.value = LocationDetectUiState.Idle
+                }
+                return@launch
+            }
+
+            // Standard mode (location field is blank or auto-filled by AI)
             if (finalMatch != null && finalMatch.match > 0 && matchedCand != null && finalMatch.confidence >= 0.80) {
                 val pct = (finalMatch.confidence * 100.0).roundToInt().coerceIn(80, 100)
                 _locationInput.value = matchedCand.location
@@ -932,17 +1062,18 @@ class PmMainViewModel(
                     confidencePercent = pct,
                     refId = matchedCand.refId,
                     reason = finalMatch.reason.ifBlank { "Kemiripan sedang dengan foto referensi." },
-                    refThumbFile = matchedCand.thumbFile
+                    refThumbFile = matchedCand.thumbFile,
+                    fromPhoto1OnManualLocation = false
                 )
             } else {
                 if (_locationAutoFilled.value) {
                     _locationInput.value = ""
                     _locationAutoFilled.value = false
                 }
-                val msg = if (finalMatch == null && !lastBatchError.isNullOrBlank()) {
-                    "Deteksi lokasi gagal: ${lastBatchError!!.take(60)}"
-                } else {
-                    "Lokasi baru, belum pernah difoto. Isi manual."
+                val msg = when {
+                    timedOut -> "Deteksi lokasi terlalu lama, isi manual."
+                    finalMatch == null && !lastBatchError.isNullOrBlank() -> "Deteksi lokasi gagal: ${lastBatchError!!.take(60)}"
+                    else -> "Lokasi baru, belum pernah difoto. Isi manual."
                 }
                 _locationDetectState.value = LocationDetectUiState.Skipped(msg)
             }
@@ -1564,7 +1695,12 @@ class PmMainViewModel(
                 _slotOriginalUris.value = updatedUris
                 val newSlot0 = updated.getOrNull(0)
                 if (newSlot0 != null && newSlot0 !== oldSlot0) {
-                    onPhoto1CapturedOrReplaced(context, newSlot0)
+                    onPhoto1CapturedOrReplaced(
+                        context = context,
+                        photo1Bitmap = newSlot0,
+                        source = Photo1Source.GALLERY,
+                        originalUri = updatedUris.getOrNull(0)
+                    )
                 }
                 generateCollage(context)
             }
@@ -1578,7 +1714,13 @@ class PmMainViewModel(
             if (slotIdx in 0..1) {
                 CollageGenerator.clearLastCameraFileForSlot(slotIdx)
             }
-            setCollageSlotBitmap(context, slotIdx, bmp, originalUri = uri)
+            setCollageSlotBitmap(
+                context = context,
+                slotIndex = slotIdx,
+                bitmap = bmp,
+                originalUri = uri,
+                photo1Source = Photo1Source.GALLERY
+            )
         }
     }
 
@@ -1781,7 +1923,13 @@ class PmMainViewModel(
 
     fun addGeneratedAiImageToCollage(context: Context, bitmap: Bitmap) {
         val slot = nextAvailableCameraSlot()
-        setCollageSlotBitmap(context, slot, bitmap)
+        setCollageSlotBitmap(
+            context = context,
+            slotIndex = slot,
+            bitmap = bitmap,
+            originalUri = null,
+            photo1Source = Photo1Source.GALLERY
+        )
     }
 
     // --- Multi-Turn Chatbot ---

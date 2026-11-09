@@ -111,7 +111,7 @@ fun PhotoCollageScreen(
     var replaceSlotIndex by remember { mutableIntStateOf(-1) }
     var showBuiltInSpeedtest by remember { mutableStateOf(false) }
     var showBuiltInWifiAnalyzer by remember { mutableStateOf(false) }
-    var askedLocationPermForPhoto1 by rememberSaveable { mutableStateOf(false) }
+    val askedLocationPermForPhoto1 by viewModel.askedLocationPermForPhoto1.collectAsStateWithLifecycle()
 
     var pendingCameraSlot by remember { mutableIntStateOf(0) }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
@@ -146,7 +146,7 @@ fun PhotoCollageScreen(
     ) { granted ->
         if (granted) {
             if (pendingCameraSlot == 0 && !NasLocationMatcher.hasLocationPermission(context) && !askedLocationPermForPhoto1) {
-                askedLocationPermForPhoto1 = true
+                viewModel.markAskedLocationPermForPhoto1()
                 photo1LocationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
             } else {
                 startCameraIntentForPendingSlot()
@@ -164,7 +164,7 @@ fun PhotoCollageScreen(
         ) == PackageManager.PERMISSION_GRANTED
         if (hasPerm) {
             if (slotIdx == 0 && !NasLocationMatcher.hasLocationPermission(context) && !askedLocationPermForPhoto1) {
-                askedLocationPermForPhoto1 = true
+                viewModel.markAskedLocationPermForPhoto1()
                 photo1LocationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
             } else {
                 startCameraIntentForPendingSlot()
