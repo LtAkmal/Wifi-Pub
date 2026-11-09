@@ -85,6 +85,9 @@ fun NasConfigDialog(
     var autoUploadOnSave by remember(currentConfig.autoUploadOnSave) {
         mutableStateOf(currentConfig.autoUploadOnSave)
     }
+    var autoDetectLocationFromPhoto1 by remember(currentConfig.autoDetectLocationFromPhoto1) {
+        mutableStateOf(currentConfig.autoDetectLocationFromPhoto1)
+    }
     var showTokenPassword by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -300,6 +303,40 @@ fun NasConfigDialog(
                         modifier = Modifier.testTag("nas_auto_upload_switch")
                     )
                 }
+
+                // 5. Auto-Detect Location from Photo 1 Toggle
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 10.dp)
+                    ) {
+                        Text(
+                            text = "Deteksi lokasi otomatis dari Foto 1",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Bandingkan Foto 1 (AP) dengan referensi lokasi di NAS menggunakan AI & GPS",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp
+                        )
+                    }
+                    Switch(
+                        checked = autoDetectLocationFromPhoto1,
+                        onCheckedChange = { autoDetectLocationFromPhoto1 = it },
+                        modifier = Modifier.testTag("nas_auto_detect_location_switch")
+                    )
+                }
             }
         },
         confirmButton = {
@@ -308,7 +345,8 @@ fun NasConfigDialog(
                     val updated = NasUploadConfig(
                         serverUrl = serverUrl.trim().ifBlank { "https://akmal-satrio-n.work.gd/pm" },
                         token = token.trim(),
-                        autoUploadOnSave = autoUploadOnSave
+                        autoUploadOnSave = autoUploadOnSave,
+                        autoDetectLocationFromPhoto1 = autoDetectLocationFromPhoto1
                     )
                     viewModel.saveNasUploadConfig(context, updated)
                     onSaved("Pengaturan Upload NAS berhasil disimpan!")

@@ -38,6 +38,7 @@ class PmRepository(
         private val KEY_NAS_SERVER_URL = stringPreferencesKey("nas_server_url")
         private val KEY_NAS_UPLOAD_TOKEN = stringPreferencesKey("nas_upload_token")
         private val KEY_NAS_AUTO_UPLOAD = booleanPreferencesKey("nas_auto_upload_on_save")
+        private val KEY_NAS_AUTO_DETECT_LOCATION = booleanPreferencesKey("nas_auto_detect_location_photo1")
 
         val DEFAULT_LOCATIONS = emptyList<String>()
     }
@@ -72,7 +73,8 @@ class PmRepository(
         NasUploadConfig(
             serverUrl = prefs[KEY_NAS_SERVER_URL]?.takeIf { it.isNotBlank() } ?: defaults.serverUrl,
             token = prefs[KEY_NAS_UPLOAD_TOKEN] ?: defaults.token,
-            autoUploadOnSave = prefs[KEY_NAS_AUTO_UPLOAD] ?: defaults.autoUploadOnSave
+            autoUploadOnSave = prefs[KEY_NAS_AUTO_UPLOAD] ?: defaults.autoUploadOnSave,
+            autoDetectLocationFromPhoto1 = prefs[KEY_NAS_AUTO_DETECT_LOCATION] ?: defaults.autoDetectLocationFromPhoto1
         )
     }
 
@@ -113,6 +115,7 @@ class PmRepository(
             prefs[KEY_NAS_SERVER_URL] = config.serverUrl.trim().ifBlank { "https://akmal-satrio-n.work.gd/pm" }
             prefs[KEY_NAS_UPLOAD_TOKEN] = config.token.trim()
             prefs[KEY_NAS_AUTO_UPLOAD] = config.autoUploadOnSave
+            prefs[KEY_NAS_AUTO_DETECT_LOCATION] = config.autoDetectLocationFromPhoto1
         }
     }
 

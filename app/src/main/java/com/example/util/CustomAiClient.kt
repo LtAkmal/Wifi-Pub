@@ -3,8 +3,13 @@ package com.example.util
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
+import com.google.firebase.Firebase
+import com.google.firebase.ai.ai
+import com.google.firebase.ai.type.content
+import com.google.firebase.ai.type.generationConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -56,6 +61,9 @@ object CustomAiClient {
         }
         val baos = ByteArrayOutputStream()
         scaled.compress(Bitmap.CompressFormat.JPEG, quality, baos)
+        if (scaled !== bitmap) {
+            scaled.recycle()
+        }
         return Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
     }
 
@@ -254,6 +262,173 @@ object CustomAiClient {
             actionLines = actionLines.ifBlank { "-Team Melakukan Pembersihan\n-Team Melakukan Pengujian Speedtest" },
             statusLines = statusLines.ifBlank { "- AP Sudah Bersih✅\n- AP Terpantau Normal ✅\n- Speedtest Terpantau Normal✅" }
         )
+    }
+
+    fun buildApLocationMatchPrompt(candidateCount: Int): String {
+        val mappingStr = (1..candidateCount).joinToString(", ") { idx ->
+            "${idx + 1} = candidate #$idx"
+        }
+        return "You are matching photos of public WiFi Access Points (APs) inside Soekarno-Hatta airport.\n" +
+            "Image 1 is a NEW photo of an AP. Images 2..${candidateCount + 1} are REFERENCE photos, each from a known location:\n" +
+            "$mappingStr (candidate number = image number - 1).\n" +
+            "Decide whether the NEW photo shows the SAME physical AP at the SAME spot as one of the candidates.\n" +
+            "Compare permanent features: the AP device and its mounting/bracket, ceiling panels and grid, beams, pillars,\n" +
+            "walls, signage and gate/door numbers, cable trays, lamps, sprinklers, and their relative positions.\n" +
+            "Ignore differences in lighting, time of day, people, luggage, small camera angle/zoom changes, blur, and the\n" +
+            "timestamp/watermark text overlaid on the photo.\n" +
+            "Many corridors in the airport look alike: only claim a match when specific details line up, not just\n" +
+            "\"similar ceiling\". If unsure, answer no match.\n" +
+            "Respond ONLY with raw JSON: {\"match\": <candidate number, or 0 if none>, \"confidence\": <0.0-1.0>, \"reason\": \"<short, in Indonesian>\"}"
+    }
+
+    fun parseLocationMatchFromJson(
+        raw: String,
+        candidates: List<LocationCandidateInput>
+    ): LocationMatch {
+        val cleaned = raw.trim()
+            .removePrefix("```json")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+        val jsonStart = cleaned.indexOf('{')
+        val jsonEnd = cleaned.lastIndexOf('}')
+        if (jsonStart < 0 || jsonEnd <= jsonStart) {
+            throw IllegalStateException("Respons AI tidak berformat JSON yang valid.")
+        }
+        val obj = JSONObject(cleaned.substring(jsonStart, jsonEnd + 1))
+        val rawMatch = obj.optInt("match", 0)
+        val rawConf = obj.optDouble("confidence", 0.0).coerceIn(0.0, 1.0)
+        val reason = obj.optString("reason", "").trim()
+
+        val validMatch = if (rawMatch in 1..candidates.size) rawMatch else 0
+        val matchedCand = if (validMatch > 0) candidates[validMatch - 1] else null
+
+        return LocationMatch(
+            match = validMatch,
+            confidence = if (validMatch > 0) rawConf else 0.0,
+            reason = reason,
+            matchedCandidate = matchedCand
+        )
+    }
+
+    /**
+     * Compares `newPhoto` (Image 1, 768 px, JPEG quality 80) against up to 20 reference `candidates`
+     * (Images 2..N+1, 480 px, JPEG quality 75) using the configured AI provider (`GEMINI_DIRECT` or
+     * `NINE_ROUTER` via `callGeminiDirectVisionMulti` / `callNineRouterVisionMulti`, with Firebase AI fallback).
+     * Recycles all intermediate downscaled bitmaps immediately to prevent OOM.
+     */
+    suspend fun matchApLocation(
+        config: AiProviderConfig,
+        newPhoto: Bitmap,
+        candidates: List<LocationCandidateInput>
+    ): Result<LocationMatch> = withContext(Dispatchers.IO) {
+        val batchCandidates = candidates.take(20)
+        if (batchCandidates.isEmpty()) {
+            return@withContext Result.success(LocationMatch(0, 0.0, "Tidak ada kandidat", null))
+        }
+
+        try {
+            val promptText = buildApLocationMatchPrompt(batchCandidates.size)
+
+            if (config.hasCustomConfig) {
+                val newPhotoB64 = bitmapToBase64Jpeg(newPhoto, maxDim = 768, quality = 80)
+                val validPairs = mutableListOf<Pair<LocationCandidateInput, String>>()
+                for (cand in batchCandidates) {
+                    val decoded = NasLocationMatcher.decodeSampledBitmap(cand.thumbFile, 480)
+                    if (decoded != null) {
+                        try {
+                            val b64 = bitmapToBase64Jpeg(decoded, maxDim = 480, quality = 75)
+                            validPairs.add(cand to b64)
+                        } finally {
+                            decoded.recycle()
+                        }
+                    }
+                }
+                if (validPairs.isEmpty()) {
+                    return@withContext Result.success(LocationMatch(0, 0.0, "Thumbnail kandidat gagal dimuat", null))
+                }
+                val indexedCandidates = validPairs.mapIndexed { idx, (cand, _) ->
+                    cand.copy(candidateNumber = idx + 1)
+                }
+                val finalPrompt = buildApLocationMatchPrompt(indexedCandidates.size)
+                val allImagesB64 = listOf(newPhotoB64) + validPairs.map { it.second }
+
+                val rawResponse = withTimeout(60_000L) {
+                    if (config.providerType == "GEMINI_DIRECT") {
+                        callGeminiDirectVisionMulti(
+                            apiKey = config.geminiDirectApiKey.trim(),
+                            model = config.geminiDirectModel.trim().ifEmpty { "gemini-2.5-flash" },
+                            prompt = finalPrompt,
+                            base64Jpegs = allImagesB64,
+                            expectJson = true
+                        )
+                    } else {
+                        callNineRouterVisionMulti(
+                            baseUrl = config.nineRouterBaseUrl,
+                            apiKey = config.nineRouterApiKey.trim(),
+                            model = config.nineRouterModel.trim().ifEmpty { "gemini/gemini-2.5-flash" },
+                            prompt = finalPrompt,
+                            base64Jpegs = allImagesB64
+                        )
+                    }
+                }
+                val parsed = parseLocationMatchFromJson(rawResponse, indexedCandidates)
+                return@withContext Result.success(parsed)
+            }
+
+            // Fallback to Firebase AI (60s timeout) with strict bitmap recycling
+            val newPhotoScaled = NasLocationMatcher.scaleDownBitmap(newPhoto, 768)
+            val loadedBitmaps = mutableListOf<Pair<LocationCandidateInput, Bitmap>>()
+            try {
+                for (cand in batchCandidates) {
+                    val decoded = NasLocationMatcher.decodeSampledBitmap(cand.thumbFile, 480)
+                    if (decoded != null) {
+                        val scaled = NasLocationMatcher.scaleDownBitmap(decoded, 480)
+                        if (scaled !== decoded) decoded.recycle()
+                        loadedBitmaps.add(cand to scaled)
+                    }
+                }
+                if (loadedBitmaps.isEmpty()) {
+                    return@withContext Result.success(LocationMatch(0, 0.0, "Thumbnail kandidat gagal dimuat", null))
+                }
+                val indexedCandidates = loadedBitmaps.mapIndexed { idx, (cand, _) ->
+                    cand.copy(candidateNumber = idx + 1)
+                }
+                val finalPrompt = buildApLocationMatchPrompt(indexedCandidates.size)
+                val model = Firebase.ai.generativeModel(
+                    modelName = "gemini-3.8-flash",
+                    generationConfig = generationConfig {
+                        responseMimeType = "application/json"
+                    }
+                )
+                val response = withTimeout(60_000L) {
+                    model.generateContent(
+                        content {
+                            image(newPhotoScaled)
+                            loadedBitmaps.forEach { (_, bmp) ->
+                                image(bmp)
+                            }
+                            text(finalPrompt)
+                        }
+                    )
+                }
+                val rawText = response.text.orEmpty()
+                if (rawText.isBlank()) {
+                    return@withContext Result.failure(IllegalStateException("AI belum diatur"))
+                }
+                val parsed = parseLocationMatchFromJson(rawText, indexedCandidates)
+                return@withContext Result.success(parsed)
+            } finally {
+                if (newPhotoScaled !== newPhoto && !newPhotoScaled.isRecycled) {
+                    newPhotoScaled.recycle()
+                }
+                loadedBitmaps.forEach { (_, bmp) ->
+                    if (!bmp.isRecycled) bmp.recycle()
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     /**
@@ -573,7 +748,7 @@ object CustomAiClient {
             requestMethod = "POST"
             doOutput = true
             connectTimeout = 20_000
-            readTimeout = 45_000
+            readTimeout = 60_000
             setRequestProperty("Content-Type", "application/json; charset=UTF-8")
             setRequestProperty("Accept", "application/json")
             if (!bearerToken.isNullOrBlank()) {

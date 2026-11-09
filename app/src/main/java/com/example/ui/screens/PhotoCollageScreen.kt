@@ -78,8 +78,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.ui.theme.SuccessGreen
 import com.example.util.CollageGenerator
+import com.example.util.NasLocationMatcher
 import com.example.viewmodel.CollageUiState
 import com.example.viewmodel.PmMainViewModel
 import kotlinx.coroutines.delay
@@ -109,6 +111,7 @@ fun PhotoCollageScreen(
     var replaceSlotIndex by remember { mutableIntStateOf(-1) }
     var showBuiltInSpeedtest by remember { mutableStateOf(false) }
     var showBuiltInWifiAnalyzer by remember { mutableStateOf(false) }
+    var askedLocationPermForPhoto1 by rememberSaveable { mutableStateOf(false) }
 
     var pendingCameraSlot by remember { mutableIntStateOf(0) }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
@@ -124,14 +127,29 @@ fun PhotoCollageScreen(
         }
     }
 
+    fun startCameraIntentForPendingSlot() {
+        val uri = CollageGenerator.createCameraCaptureUri(context, pendingCameraSlot)
+        pendingCameraUri = uri
+        if (uri != null) {
+            takePictureLauncher.launch(uri)
+        }
+    }
+
+    val photo1LocationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        startCameraIntentForPendingSlot()
+    }
+
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            val uri = CollageGenerator.createCameraCaptureUri(context, pendingCameraSlot)
-            pendingCameraUri = uri
-            if (uri != null) {
-                takePictureLauncher.launch(uri)
+            if (pendingCameraSlot == 0 && !NasLocationMatcher.hasLocationPermission(context) && !askedLocationPermForPhoto1) {
+                askedLocationPermForPhoto1 = true
+                photo1LocationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            } else {
+                startCameraIntentForPendingSlot()
             }
         } else {
             onShowSnackbar("Izin kamera diperlukan untuk mengambil foto langsung.")
@@ -145,10 +163,11 @@ fun PhotoCollageScreen(
             Manifest.permission.CAMERA
         ) == PackageManager.PERMISSION_GRANTED
         if (hasPerm) {
-            val uri = CollageGenerator.createCameraCaptureUri(context, slotIdx)
-            pendingCameraUri = uri
-            if (uri != null) {
-                takePictureLauncher.launch(uri)
+            if (slotIdx == 0 && !NasLocationMatcher.hasLocationPermission(context) && !askedLocationPermForPhoto1) {
+                askedLocationPermForPhoto1 = true
+                photo1LocationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            } else {
+                startCameraIntentForPendingSlot()
             }
         } else {
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)

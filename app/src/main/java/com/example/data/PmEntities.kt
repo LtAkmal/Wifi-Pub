@@ -22,7 +22,10 @@ data class PmReportEntity(
     val uploadClientRef: String? = null,
     val uploadStatus: String = "OFF", // "PENDING", "UPLOADING", "SENT", "FAILED", "OFF"
     val uploadedReportId: String? = null,
-    val uploadError: String? = null
+    val uploadError: String? = null,
+    val gpsLat: Double? = null,
+    val gpsLon: Double? = null,
+    val gpsAccuracyM: Float? = null
 )
 
 @Entity(tableName = "corrective_maintenance")
@@ -52,7 +55,8 @@ data class TodayReportConfig(
 data class NasUploadConfig(
     val serverUrl: String = "https://akmal-satrio-n.work.gd/pm",
     val token: String = "",
-    val autoUploadOnSave: Boolean = true
+    val autoUploadOnSave: Boolean = true,
+    val autoDetectLocationFromPhoto1: Boolean = true
 ) {
     val isConfigured: Boolean
         get() = serverUrl.isNotBlank() && token.isNotBlank()

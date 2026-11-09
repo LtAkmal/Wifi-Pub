@@ -97,11 +97,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.graphics.Bitmap
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.style.TextAlign
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.SpaceGroteskFontFamily
 import com.example.ui.theme.SuccessGreen
 import com.example.util.CollageGenerator
+import com.example.util.NasLocationMatcher
 import com.example.util.ReportFormatter
+import com.example.viewmodel.LocationDetectUiState
 import com.example.viewmodel.PmMainViewModel
 import com.example.viewmodel.SpeedtestScanState
 
@@ -133,12 +142,15 @@ fun DailyPmScreen(
     val reportConfig by viewModel.reportConfig.collectAsStateWithLifecycle()
     val collageSlots by viewModel.collageSlots.collectAsStateWithLifecycle()
     val nasConfig by viewModel.nasUploadConfig.collectAsStateWithLifecycle()
+    val locationDetectState by viewModel.locationDetectState.collectAsStateWithLifecycle()
 
     var showLocationSheet by remember { mutableStateOf(false) }
     var showPreviewText by remember { mutableStateOf(true) }
     var showAdvancedFields by remember { mutableStateOf(false) }
     var showBuiltInSpeedtest by remember { mutableStateOf(false) }
     var showBuiltInWifiAnalyzer by remember { mutableStateOf(false) }
+    var showLocationComparisonDialog by remember { mutableStateOf(false) }
+    var askedLocationPermForPhoto1 by rememberSaveable { mutableStateOf(false) }
 
     // Direct In-App Camera Capture state for Foto 1 (slot 0) and Foto 2 (slot 1)
     var pendingCameraSlot by remember { mutableIntStateOf(0) }
@@ -155,16 +167,32 @@ fun DailyPmScreen(
         }
     }
 
+    fun startCameraIntentForPendingSlot() {
+        val uri = CollageGenerator.createCameraCaptureUri(context, pendingCameraSlot)
+        pendingCameraUri = uri
+        if (uri != null) {
+            takePictureLauncher.launch(uri)
+        } else {
+            onShowSnackbar("Gagal menyiapkan file kamera.")
+        }
+    }
+
+    val photo1LocationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        // Continue taking Foto 1 whether GPS permission was granted or denied
+        startCameraIntentForPendingSlot()
+    }
+
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            val uri = CollageGenerator.createCameraCaptureUri(context, pendingCameraSlot)
-            pendingCameraUri = uri
-            if (uri != null) {
-                takePictureLauncher.launch(uri)
+            if (pendingCameraSlot == 0 && !NasLocationMatcher.hasLocationPermission(context) && !askedLocationPermForPhoto1) {
+                askedLocationPermForPhoto1 = true
+                photo1LocationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
             } else {
-                onShowSnackbar("Gagal menyiapkan file kamera.")
+                startCameraIntentForPendingSlot()
             }
         } else {
             onShowSnackbar("Izin kamera diperlukan untuk mengambil foto dokumentasi langsung.")
@@ -178,12 +206,11 @@ fun DailyPmScreen(
             Manifest.permission.CAMERA
         ) == PackageManager.PERMISSION_GRANTED
         if (hasPerm) {
-            val uri = CollageGenerator.createCameraCaptureUri(context, slotIndex)
-            pendingCameraUri = uri
-            if (uri != null) {
-                takePictureLauncher.launch(uri)
+            if (slotIndex == 0 && !NasLocationMatcher.hasLocationPermission(context) && !askedLocationPermForPhoto1) {
+                askedLocationPermForPhoto1 = true
+                photo1LocationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
             } else {
-                onShowSnackbar("Gagal menyiapkan kamera.")
+                startCameraIntentForPendingSlot()
             }
         } else {
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
@@ -705,6 +732,16 @@ fun DailyPmScreen(
                     }
                 }
 
+                // Automatic Location Detection Status & Chip from Foto 1
+                LocationDetectStatusSection(
+                    state = locationDetectState,
+                    onClickMatchedChip = { showLocationComparisonDialog = true },
+                    onCancelAutoDetected = { viewModel.cancelAutoDetectedLocation(context) },
+                    onApplySuggested = { suggested ->
+                        viewModel.applySuggestedLocation(context, suggested)
+                    }
+                )
+
                 // Clean Toggle for Date, Equipment & Status
                 Surface(
                     shape = RoundedCornerShape(10.dp),
@@ -1027,6 +1064,20 @@ fun DailyPmScreen(
             viewModel = viewModel,
             onDismiss = { showBuiltInWifiAnalyzer = false },
             onCapturedToast = { msg -> onShowSnackbar(msg) }
+        )
+    }
+
+    // Side-by-side Photo 1 vs NAS Reference Photo Comparison Dialog
+    val currentMatchedState = locationDetectState as? LocationDetectUiState.MatchedHigh
+    if (showLocationComparisonDialog && currentMatchedState != null) {
+        LocationComparisonDialog(
+            newPhotoBitmap = collageSlots.getOrNull(0),
+            matchedState = currentMatchedState,
+            onDismiss = { showLocationComparisonDialog = false },
+            onCancelMatch = {
+                showLocationComparisonDialog = false
+                viewModel.cancelAutoDetectedLocation(context)
+            }
         )
     }
 
@@ -1422,4 +1473,355 @@ fun shareTextToApps(context: Context, text: String) {
         putExtra(Intent.EXTRA_TEXT, text)
     }
     context.startActivity(Intent.createChooser(sendIntent, "Kirim Laporan ke..."))
+}
+
+@Composable
+private fun LocationDetectStatusSection(
+    state: LocationDetectUiState,
+    onClickMatchedChip: () -> Unit,
+    onCancelAutoDetected: () -> Unit,
+    onApplySuggested: (LocationDetectUiState.SuggestedMedium) -> Unit
+) {
+    when (state) {
+        is LocationDetectUiState.Idle -> {}
+
+        is LocationDetectUiState.Detecting -> {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                    .testTag("location_detect_loading_row")
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 2.dp
+                )
+                Text(
+                    text = "Mendeteksi lokasi dari Foto 1…",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        is LocationDetectUiState.MatchedHigh -> {
+            val refThumbBitmap = remember(state.refThumbFile.absolutePath, state.refThumbFile.lastModified()) {
+                NasLocationMatcher.decodeSampledBitmap(state.refThumbFile, 160)
+            }
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = SuccessGreen.copy(alpha = 0.12f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(
+                        width = 1.dp,
+                        color = SuccessGreen.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onClickMatchedChip() }
+                    .testTag("location_detect_matched_chip")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (refThumbBitmap != null) {
+                        Image(
+                            bitmap = refThumbBitmap.asImageBitmap(),
+                            contentDescription = "Thumbnail Referensi ${state.refId}",
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.dp, SuccessGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "📍 Terdeteksi AI · ${state.confidencePercent}% · mirip ${state.refId}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = SuccessGreen,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Ketuk untuk bandingkan foto · ${state.reason}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                        modifier = Modifier
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onCancelAutoDetected() }
+                            .testTag("cancel_auto_location_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Batalkan",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = "Batalkan",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        is LocationDetectUiState.SuggestedMedium -> {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onApplySuggested(state) }
+                    .testTag("location_detect_suggested_chip")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Mirip: ${state.location}? (${state.confidencePercent}% · ${state.refId})",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp)
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onApplySuggested(state) }
+                            .testTag("apply_suggested_location_button")
+                    ) {
+                        Text(
+                            text = "Pakai",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            maxLines = 1,
+                            softWrap = false,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        is LocationDetectUiState.Skipped -> {
+            Text(
+                text = state.message,
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 11.5.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp)
+                    .testTag("location_detect_skipped_text")
+            )
+        }
+    }
+}
+
+@Composable
+private fun LocationComparisonDialog(
+    newPhotoBitmap: Bitmap?,
+    matchedState: LocationDetectUiState.MatchedHigh,
+    onDismiss: () -> Unit,
+    onCancelMatch: () -> Unit
+) {
+    val refBitmap = remember(matchedState.refThumbFile.absolutePath, matchedState.refThumbFile.lastModified()) {
+        NasLocationMatcher.decodeSampledBitmap(matchedState.refThumbFile, 480)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(
+                    text = "Perbandingan Lokasi AI (${matchedState.confidencePercent}%)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = matchedState.location,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = SuccessGreen,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Left: Foto 1 Baru
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "Foto 1 Baru",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(0.8f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF0B1120))
+                                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (newPhotoBitmap != null) {
+                                Image(
+                                    bitmap = newPhotoBitmap.asImageBitmap(),
+                                    contentDescription = "Foto 1 Baru",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+                            } else {
+                                Text(
+                                    text = "Tidak ada foto",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+                    }
+
+                    // Right: Foto Referensi NAS
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "Ref ${matchedState.refId}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = SuccessGreen,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(0.8f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF0B1120))
+                                .border(1.dp, SuccessGreen.copy(alpha = 0.5f), RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (refBitmap != null) {
+                                Image(
+                                    bitmap = refBitmap.asImageBitmap(),
+                                    contentDescription = "Foto Referensi ${matchedState.refId}",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+                            } else {
+                                Text(
+                                    text = "Thumbnail tidak tersedia",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Alasan Kecocokan AI:",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = matchedState.reason,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text("Tutup")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancelMatch) {
+                Text(
+                    text = "Batalkan Lokasi Ini",
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    )
 }

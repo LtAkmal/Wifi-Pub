@@ -141,8 +141,9 @@ fun WifiPmHelperApp(
     val aiConfig by viewModel.aiProviderConfig.collectAsStateWithLifecycle()
     val nasConfig by viewModel.nasUploadConfig.collectAsStateWithLifecycle()
 
-    // Auto-retry any PENDING / FAILED NAS uploads when app opens & listen for NAS upload snackbars
+    // Auto-retry any PENDING / FAILED NAS uploads & refresh location references when app opens
     LaunchedEffect(Unit) {
+        viewModel.refreshNasLocationRefsInBackground(context)
         viewModel.retryPendingOrFailedUploads(context)
         viewModel.nasSnackbarEvents.collect { msg ->
             snackbarHostState.showSnackbar(msg)

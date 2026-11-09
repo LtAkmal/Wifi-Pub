@@ -106,14 +106,15 @@ object NasUploadClient {
         slotOriginalFiles: List<File?>,
         pingMs: Int?,
         shiftCode: String,
-        saveTimestampMs: Long
+        saveTimestampMs: Long,
+        gpsFix: GpsFix? = null
     ): Int = withContext(Dispatchers.IO) {
         val dir = getUploadDirForClientRef(context, clientRef)
         if (!dir.exists()) {
             dir.mkdirs()
         }
 
-        // Save extra metadata so future retries preserve exact time, shift, and pingMs
+        // Save extra metadata so future retries preserve exact time, shift, pingMs, and gps
         try {
             val timeStr = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(saveTimestampMs))
             val extraJson = JSONObject().apply {
@@ -121,6 +122,18 @@ object NasUploadClient {
                 put("shift", shiftCode)
                 if (pingMs != null && pingMs > 0) {
                     put("pingMs", pingMs)
+                }
+                if (gpsFix != null) {
+                    put(
+                        "gps",
+                        JSONObject().apply {
+                            put("lat", gpsFix.lat)
+                            put("lon", gpsFix.lon)
+                            if (gpsFix.accuracyM != null) {
+                                put("accuracyM", gpsFix.accuracyM.roundToInt())
+                            }
+                        }
+                    )
                 }
             }
             File(dir, "meta_extra.json").writeText(extraJson.toString())
@@ -183,10 +196,12 @@ object NasUploadClient {
             if (destPhotoFile.exists() && destPhotoFile.length() > 0L) {
                 savedCount++
                 // Create thumbnail (longest side 480 px, JPEG quality 80)
-                val sourceForThumb = bitmap ?: decodeSampledBitmapFromFile(destPhotoFile, 480)
+                val decodedFromFile = if (bitmap == null) decodeSampledBitmapFromFile(destPhotoFile, 480) else null
+                val sourceForThumb = bitmap ?: decodedFromFile
                 if (sourceForThumb != null) {
                     saveThumbnail480(sourceForThumb, destThumbFile)
                 }
+                decodedFromFile?.recycle()
             }
         }
         savedCount
@@ -207,6 +222,9 @@ object NasUploadClient {
             }
             FileOutputStream(destThumbFile).use { out ->
                 scaled.compress(Bitmap.CompressFormat.JPEG, 80, out)
+            }
+            if (scaled !== source) {
+                scaled.recycle()
             }
         } catch (_: Exception) {
         }
@@ -301,10 +319,11 @@ object NasUploadClient {
             return@withContext NasUploadResult.Failure("File foto untuk PM ini tidak ditemukan di penyimpanan lokal.")
         }
 
-        // Read saved extra metadata (time, shift, pingMs) if present
+        // Read saved extra metadata (time, shift, pingMs, gps) if present
         var savedTimeStr: String? = null
         var savedShiftCode: String? = null
         var savedPingMs: Int? = fallbackPingMs
+        var savedGpsFix: GpsFix? = null
         val extraFile = File(uploadDir, "meta_extra.json")
         if (extraFile.exists()) {
             try {
@@ -313,6 +332,19 @@ object NasUploadClient {
                 savedShiftCode = extraJson.optString("shift").takeIf { it.isNotBlank() }
                 if (extraJson.has("pingMs")) {
                     savedPingMs = extraJson.optInt("pingMs").takeIf { it > 0 }
+                }
+                val gpsObj = extraJson.optJSONObject("gps")
+                if (gpsObj != null && gpsObj.has("lat") && gpsObj.has("lon")) {
+                    val lat = gpsObj.optDouble("lat", Double.NaN)
+                    val lon = gpsObj.optDouble("lon", Double.NaN)
+                    val acc = if (gpsObj.has("accuracyM")) gpsObj.optDouble("accuracyM", Double.NaN) else Double.NaN
+                    if (!lat.isNaN() && !lon.isNaN()) {
+                        savedGpsFix = GpsFix(
+                            lat = lat,
+                            lon = lon,
+                            accuracyM = if (!acc.isNaN()) acc.toFloat() else null
+                        )
+                    }
                 }
             } catch (_: Exception) {
             }
@@ -329,6 +361,10 @@ object NasUploadClient {
         } else {
             "SH1"
         }
+
+        val finalGpsLat = report.gpsLat ?: savedGpsFix?.lat
+        val finalGpsLon = report.gpsLon ?: savedGpsFix?.lon
+        val finalGpsAcc = report.gpsAccuracyM ?: savedGpsFix?.accuracyM
 
         // Build `meta` JSON strictly following server specification
         val metaJson = JSONObject().apply {
@@ -359,6 +395,18 @@ object NasUploadClient {
                         put("issue", matchingCm.issue)
                         put("action", matchingCm.actionLines)
                         put("status", matchingCm.statusLines)
+                    }
+                )
+            }
+            if (finalGpsLat != null && finalGpsLon != null) {
+                put(
+                    "gps",
+                    JSONObject().apply {
+                        put("lat", finalGpsLat)
+                        put("lon", finalGpsLon)
+                        if (finalGpsAcc != null) {
+                            put("accuracyM", finalGpsAcc.roundToInt())
+                        }
                     }
                 )
             }
